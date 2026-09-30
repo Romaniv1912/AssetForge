@@ -8,6 +8,8 @@ export function SelectionSummary({ selection }: { selection: SelectionSnapshot }
   const images = selection.images.length;
   const fills = selection.images.reduce((n, i) => n + i.targets.length, 0);
   const unsupported = selection.unsupported.length;
+  const cropped = selection.images.filter((i) => i.crop);
+  const example = cropped.find((i) => i.width && i.fullWidth);
 
   return (
     <div className="selection">
@@ -18,6 +20,14 @@ export function SelectionSummary({ selection }: { selection: SelectionSnapshot }
       {fills > images && (
         <div className="selection__note">
           {fills} image fills share {images} unique image{images === 1 ? '' : 's'} — each is processed once.
+        </div>
+      )}
+      {cropped.length > 0 && (
+        <div className="selection__note">
+          {cropped.length === images ? (images === 1 ? 'The image is' : 'All images are') : `${cropped.length} of ${images} images are`} cropped
+          in Figma: only the visible part
+          {example ? ` (${example.width}×${example.height} of ${example.fullWidth}×${example.fullHeight})` : ''} is processed and
+          resized, and the crop is reset on replace.
         </div>
       )}
       {unsupported > 0 && (

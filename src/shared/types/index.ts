@@ -43,12 +43,18 @@ export interface SelectedImage {
   id: string;
   /** Figma image hash of the original file. */
   hash: string;
-  /** Visible region of a fill in crop mode; only this part is processed. */
+  /**
+   * Visible part of the image (crop mode, or a Fill whose layer proportions
+   * differ from the image); only this part is processed.
+   */
   crop: NormalizedRect | null;
   name: string;
   /** Pixel size of the processed region (the crop, or the whole image). */
   width: number | null;
   height: number | null;
+  /** Pixel size of the whole original image. */
+  fullWidth: number | null;
+  fullHeight: number | null;
   targets: ImageTarget[];
 }
 

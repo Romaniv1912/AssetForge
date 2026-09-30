@@ -20,6 +20,8 @@ const selection = {
     name: img.name,
     width: img.width,
     height: img.height,
+    fullWidth: img.width,
+    fullHeight: img.height,
     targets: [{ nodeId: `1:${i + 1}`, nodeName: img.name, nodeType: 'RECTANGLE', fillIndex: 0, nodeWidth: img.width, nodeHeight: img.height }],
   })),
   unsupported: [{ nodeId: '9:1', nodeName: 'Heading', nodeType: 'TEXT', reason: 'Text without an image fill' }],

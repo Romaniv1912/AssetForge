@@ -1,5 +1,5 @@
 import { MAX_SCANNED_NODES } from '../../shared/constants';
-import { cropOf } from '../../shared/figma/crop';
+import { visibleRegion } from '../../shared/figma/crop';
 import type { ImageTarget, NormalizedRect, SelectedImage, SelectionSnapshot, UnsupportedNode } from '../../shared/types';
 
 type FillableNode = SceneNode & MinimalFillsMixin;
@@ -12,7 +12,14 @@ function hasChildren(node: BaseNode): node is BaseNode & ChildrenMixin {
   return 'children' in node;
 }
 
+interface FoundFill {
+  hash: string;
+  paint: ImagePaint;
+  target: ImageTarget;
+}
+
 interface ScanState {
+  found: FoundFill[];
   images: Map<string, SelectedImage>;
   unsupported: UnsupportedNode[];
   scanned: number;
@@ -24,7 +31,7 @@ interface ScanState {
  * groups, components and instances) and explains everything it cannot use.
  */
 export async function scanSelection(selection: readonly SceneNode[]): Promise<SelectionSnapshot> {
-  const state: ScanState = { images: new Map(), unsupported: [], scanned: 0, truncated: false };
+  const state: ScanState = { found: [], images: new Map(), unsupported: [], scanned: 0, truncated: false };
 
   for (const node of selection) {
     const before = countTargets(state);
@@ -40,20 +47,23 @@ export async function scanSelection(selection: readonly SceneNode[]): Promise<Se
     }
   }
 
-  // Resolve pixel sizes (needed for display and for aspect-ratio decisions).
+  // Pixel sizes are needed to show sizes and to find the visible part of Fill-mode fills.
+  const sizes = new Map<string, { width: number; height: number } | null>();
   await Promise.all(
-    [...state.images.values()].map(async (image) => {
-      const handle = figma.getImageByHash(image.hash);
-      if (!handle) return;
+    [...new Set(state.found.map((f) => f.hash))].map(async (hash) => {
+      const handle = figma.getImageByHash(hash);
       try {
-        const size = await handle.getSizeAsync();
-        image.width = image.crop ? Math.max(1, Math.round(size.width * image.crop.width)) : size.width;
-        image.height = image.crop ? Math.max(1, Math.round(size.height * image.crop.height)) : size.height;
+        sizes.set(hash, handle ? await handle.getSizeAsync() : null);
       } catch {
-        // Size unavailable (image not yet loaded); shown as unknown.
+        sizes.set(hash, null); // not loaded yet; shown as unknown
       }
     }),
   );
+  for (const { hash, paint, target } of state.found) {
+    const size = sizes.get(hash) ?? null;
+    const crop = visibleRegion(paint, { width: target.nodeWidth, height: target.nodeHeight }, size ?? undefined);
+    addTarget(state, hash, crop, size, target);
+  }
 
   return {
     images: [...state.images.values()],
@@ -81,13 +91,17 @@ function visit(node: SceneNode, state: ScanState, problems: string[], isRoot: bo
             problems.push('The image fill has no image data (still loading or missing)');
             return;
           }
-          addTarget(state, paint.imageHash, cropOf(paint), {
-            nodeId: node.id,
-            nodeName: node.name,
-            nodeType: node.type,
-            fillIndex,
-            nodeWidth: 'width' in node ? node.width : 0,
-            nodeHeight: 'height' in node ? node.height : 0,
+          state.found.push({
+            hash: paint.imageHash,
+            paint,
+            target: {
+              nodeId: node.id,
+              nodeName: node.name,
+              nodeType: node.type,
+              fillIndex,
+              nodeWidth: 'width' in node ? node.width : 0,
+              nodeHeight: 'height' in node ? node.height : 0,
+            },
           });
         } else if (paint.type === 'VIDEO') {
           problems.push('Video fills are not supported');
@@ -111,20 +125,34 @@ function cropKey(hash: string, crop: NormalizedRect | null): string {
   return `${hash}@${[crop.x, crop.y, crop.width, crop.height].map((v) => v.toFixed(4)).join(',')}`;
 }
 
-function addTarget(state: ScanState, hash: string, crop: NormalizedRect | null, target: ImageTarget): void {
+function addTarget(
+  state: ScanState,
+  hash: string,
+  crop: NormalizedRect | null,
+  size: { width: number; height: number } | null,
+  target: ImageTarget,
+): void {
   const id = cropKey(hash, crop);
   const existing = state.images.get(id);
   if (existing) {
     existing.targets.push(target);
     return;
   }
-  state.images.set(id, { id, hash, crop, name: target.nodeName, width: null, height: null, targets: [target] });
+  state.images.set(id, {
+    id,
+    hash,
+    crop,
+    name: target.nodeName,
+    width: size ? (crop ? Math.max(1, Math.round(size.width * crop.width)) : size.width) : null,
+    height: size ? (crop ? Math.max(1, Math.round(size.height * crop.height)) : size.height) : null,
+    fullWidth: size?.width ?? null,
+    fullHeight: size?.height ?? null,
+    targets: [target],
+  });
 }
 
 function countTargets(state: ScanState): number {
-  let n = 0;
-  for (const image of state.images.values()) n += image.targets.length;
-  return n;
+  return state.found.length;
 }
 
 function describeNoImage(node: SceneNode): string {

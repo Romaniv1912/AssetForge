@@ -43,7 +43,7 @@ them) and run **AssetForge**.
 Inside Figma the bundled UI runs in an opaque-origin, non-secure iframe: no
 Cache Storage, no IndexedDB, no WebGPU. So on every launch the model would be
 downloaded again, and large models could not run at all. To avoid that, the
-bundled UI checks `https://romaniv1912.github.io/ImageKit/version.json` at
+bundled UI checks `https://romaniv1912.github.io/AssetForge/version.json` at
 startup (≤ 2.5 s). If the check succeeds and the message-protocol version
 matches, the UI navigates to that identical hosted copy (Figma's "non-null
 origin" UI) and forwards Figma's theme tokens. There:

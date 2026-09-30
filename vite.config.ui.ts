@@ -15,7 +15,7 @@ const protocolVersion = Number(/PROTOCOL_VERSION = (\d+)/.exec(readFileSync(new 
  * ASSETFORGE_REMOTE_UI=https://…/ for a fork, or ASSETFORGE_REMOTE_UI=off to
  * build a UI that always runs bundled.
  */
-const DEFAULT_REMOTE_UI = 'https://romaniv1912.github.io/ImageKit/';
+const DEFAULT_REMOTE_UI = 'https://romaniv1912.github.io/AssetForge/';
 const remoteEnv = process.env.ASSETFORGE_REMOTE_UI;
 const remoteUi = remoteEnv === 'off' ? '' : remoteEnv ? remoteEnv.replace(/\/?$/, '/') : DEFAULT_REMOTE_UI;
 

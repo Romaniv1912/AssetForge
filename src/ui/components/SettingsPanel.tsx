@@ -1,6 +1,7 @@
 import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
+import { hostedUiStatus } from '../lib/hosted';
 import { Checkbox, NumberField, Section, SelectField, Slider } from './Controls';
 
 type Update = (updater: (options: ProcessingOptions) => ProcessingOptions) => void;
@@ -26,6 +27,8 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
   const resize = options.resize;
   const compression = options.compression;
   const model = SEGMENTATION_MODELS.find((m) => m.id === bg.model) ?? SEGMENTATION_MODELS[0]!;
+  // The hosted-UI check finishes before React renders, so this is final.
+  const cacheStatus = hostedUiStatus();
 
   const set = <K extends keyof ProcessingOptions>(key: K, value: Partial<ProcessingOptions[K]>) =>
     update((o) => ({ ...o, [key]: { ...o[key], ...value } }));
@@ -42,9 +45,12 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
               options={SEGMENTATION_MODELS.map((m) => ({ value: m.id, label: m.label, hint: m.description }))}
               onChange={(value) => set('backgroundRemoval', { model: value })}
             />
-            <p className="hint">
-              Runs locally — images never leave your computer. {model.performanceNote ?? ''} The model is downloaded on
-              first use and cached. Licence: {model.license}
+            <p className="hint" title={cacheStatus.hosted ? undefined : cacheStatus.reason}>
+              Runs locally — images never leave your computer. {model.performanceNote ?? ''}{' '}
+              {cacheStatus.hosted
+                ? 'The model is downloaded once and cached between launches.'
+                : `The model is downloaded once per plugin launch: ${cacheStatus.reason}.`}{' '}
+              Licence: {model.license}
               {model.commercialUse === 'requires-agreement' && (
                 <>
                   {' '}

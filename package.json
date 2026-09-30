@@ -20,7 +20,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Romaniv1912/ImageKit.git"
+    "url": "git+https://github.com/Romaniv1912/AssetForge.git"
   },
   "dependencies": {
     "@jsquash/avif": "^2.1.1",

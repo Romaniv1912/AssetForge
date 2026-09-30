@@ -22,6 +22,13 @@ interface ForwardedTheme {
 }
 
 /** True when this page was loaded from a URL (the hosted copy), not inlined by Figma. */
+/** Why the bundled UI is running instead of the hosted copy (for the settings hint). */
+let bundledReason = 'the hosted copy is disabled in this build';
+
+export function hostedUiStatus(): { hosted: boolean; reason: string } {
+  return isHosted() ? { hosted: true, reason: '' } : { hosted: false, reason: bundledReason };
+}
+
 export function isHosted(): boolean {
   return location.protocol === 'https:' || location.protocol === 'http:';
 }
@@ -29,15 +36,30 @@ export function isHosted(): boolean {
 /** Resolves true when navigation to the hosted UI has started (do not render). */
 export async function redirectToHostedUi(): Promise<boolean> {
   const base = __REMOTE_UI_URL__;
-  if (!base || isHosted() || !isFigma()) return false;
+  if (!base || isHosted()) return false;
+  if (!isFigma()) {
+    bundledReason = 'not running inside Figma';
+    return false;
+  }
+  const probe = new URL('version.json', base).href;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(new URL('version.json', base), { cache: 'no-store', signal: controller.signal });
-    if (!response.ok) return false;
+    const response = await fetch(probe, { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) {
+      bundledReason = `${probe} returned HTTP ${response.status}`;
+      return false;
+    }
     const info = (await response.json()) as { protocol?: number };
-    if (info.protocol !== PROTOCOL_VERSION) return false;
-  } catch {
+    if (info.protocol !== PROTOCOL_VERSION) {
+      bundledReason = `the hosted copy uses protocol ${String(info.protocol)}, this plugin ${PROTOCOL_VERSION} (update the plugin)`;
+      return false;
+    }
+  } catch (error) {
+    bundledReason = controller.signal.aborted
+      ? `${probe} did not answer within ${PROBE_TIMEOUT_MS / 1000} s`
+      : `${probe} is unreachable (${error instanceof Error ? error.message : String(error)})`;
+    console.warn('[AssetForge] Hosted UI unavailable:', bundledReason);
     return false;
   } finally {
     clearTimeout(timer);

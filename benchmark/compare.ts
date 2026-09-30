@@ -58,7 +58,7 @@ async function main() {
       backgroundRemoval: { enabled: false, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
       crop: { enabled: false, padding: 0, alphaThreshold: 0 },
       resize: { enabled: false, maxWidth: 0, maxHeight: 0, preserveAspectRatio: true, allowUpscale: false },
-      compression: { format, preset, allowAvifInAuto: false, custom: { quality: 80, lossless: false } },
+      compression: { format: 'original', preset, allowAvifInAuto: false, custom: { quality: 80, lossless: false } },
     };
     const ours = await processImage(source, options);
     const oursDecoded = await decodeImage(ours.data);

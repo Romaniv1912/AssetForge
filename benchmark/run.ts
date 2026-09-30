@@ -50,7 +50,7 @@ const args = Object.fromEntries(
 
 const presets: CompressionPreset[] =
   args.presets === 'all' ? ['maximum', 'high', 'balanced', 'small'] : ((args.presets ?? 'high').split(',') as CompressionPreset[]);
-const formats: OutputFormat[] = (args.formats ?? 'auto,png,webp,avif,jpeg').split(',') as OutputFormat[];
+const formats: OutputFormat[] = (args.formats ?? 'original,auto,png,webp,avif,jpeg').split(',') as OutputFormat[];
 const only = args.images ? new Set(args.images.split(',')) : undefined;
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(2)} MB` : `${(n / 1024).toFixed(1)} KB`);

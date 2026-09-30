@@ -8,7 +8,8 @@ export const UI_SIZE_EXPANDED = { width: 760, height: 680 } as const;
 /** Stop scanning a selection after this many nodes (huge frames). */
 export const MAX_SCANNED_NODES = 5_000;
 
-export const SETTINGS_STORAGE_KEY = 'assetforge.settings.v1';
+// v2: default output format changed to `original` (TinyPNG behaviour).
+export const SETTINGS_STORAGE_KEY = 'assetforge.settings.v2';
 export const PLUGIN_DATA_KEY = 'assetforge';
 
 export const DEFAULT_OPTIONS: ProcessingOptions = {
@@ -22,7 +23,7 @@ export const DEFAULT_OPTIONS: ProcessingOptions = {
   crop: { enabled: true, padding: 8, alphaThreshold: 0 },
   resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
   compression: {
-    format: 'auto',
+    format: 'original',
     preset: 'high',
     allowAvifInAuto: true,
     custom: { quality: 80, lossless: false },

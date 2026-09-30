@@ -28,7 +28,7 @@ describe('processImage pipeline', () => {
   });
 
   it('opaque PNG photo: no padding is added, format chosen by measurement', async () => {
-    const result = await processImage(fixture('coffee.png'), options({ crop: { enabled: true, padding: 8 } }));
+    const result = await processImage(fixture('coffee.png'), options({ crop: { enabled: true, padding: 8 }, compression: { format: 'auto' } }));
     expect(result.cropped).toBe(false);
     expect([result.width, result.height]).toEqual([600, 400]);
     expect(result.analysis.hasAlpha).toBe(false);

@@ -60,7 +60,7 @@ async function main() {
       backgroundRemoval: { enabled: false, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
       crop: { enabled: true, padding: 8, alphaThreshold: 0 },
       resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
-      compression: { format: 'auto', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
+      compression: { format: 'original', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
     };
   });
   // Offline stand-ins for the CDN downloads done by the ML worker: the real

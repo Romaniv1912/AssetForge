@@ -6,7 +6,12 @@ import { Checkbox, NumberField, Section, SelectField, Slider } from './Controls'
 type Update = (updater: (options: ProcessingOptions) => ProcessingOptions) => void;
 
 const FORMAT_OPTIONS: { value: OutputFormat; label: string; hint: string }[] = [
-  { value: 'auto', label: 'Auto', hint: 'Measure every suitable encoder and keep the smallest file that meets the quality target' },
+  {
+    value: 'original',
+    label: 'Same as original',
+    hint: 'Like TinyPNG: PNG stays PNG, JPEG stays JPEG — smaller, visually identical, same dimensions',
+  },
+  { value: 'auto', label: 'Smallest (Auto)', hint: 'Measure every suitable encoder and keep the smallest file that meets the quality target' },
   { value: 'webp', label: 'WebP', hint: 'libwebp — lossy or lossless, with alpha' },
   { value: 'avif', label: 'AVIF', hint: 'libavif/aom — smallest files, slowest encoder' },
   { value: 'png', label: 'PNG', hint: 'Palette quantisation + oxipng, or lossless' },
@@ -123,6 +128,12 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
               onChange={(quality) => set('compression', { custom: { ...compression.custom, quality } })}
             />
           </div>
+        )}
+        {compression.format === 'original' && (
+          <p className="hint">
+            Works like TinyPNG: PNG stays PNG (smart colour reduction), JPEG stays JPEG (MozJPEG), dimensions unchanged,
+            metadata removed. Results replace Figma layers without any conversion.
+          </p>
         )}
         {compression.format === 'auto' && (
           <Checkbox

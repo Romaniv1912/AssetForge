@@ -172,7 +172,10 @@ export async function processImage(
   }
 
   // Never make an untouched image bigger: keep the (metadata-stripped) original.
-  const sameFormat = options.compression.format === 'auto' || options.compression.format === decoded.format;
+  const sameFormat =
+    options.compression.format === 'auto' ||
+    options.compression.format === 'original' ||
+    options.compression.format === decoded.format;
   const originalEncodable = decoded.format === 'png' || decoded.format === 'jpeg' || decoded.format === 'webp' || decoded.format === 'avif';
   if (!pixelsChanged && sameFormat && originalEncodable && options.compression.preset !== 'custom') {
     const original = await passThrough(bytes, decoded.format as EncodableFormat);

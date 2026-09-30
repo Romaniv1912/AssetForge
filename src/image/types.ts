@@ -18,7 +18,11 @@ export type ImageFormat = 'png' | 'jpeg' | 'webp' | 'avif' | 'gif' | 'bmp' | 'un
 /** Formats the engine can write. */
 export type EncodableFormat = 'png' | 'jpeg' | 'webp' | 'avif';
 
-export type OutputFormat = 'auto' | EncodableFormat;
+/**
+ * `original` keeps the source format (TinyPNG behaviour: PNG → PNG, JPEG → JPEG,
+ * WebP → WebP, AVIF → AVIF). `auto` picks whichever format is smallest.
+ */
+export type OutputFormat = 'original' | 'auto' | EncodableFormat;
 
 export type CompressionPreset = 'maximum' | 'high' | 'balanced' | 'small' | 'custom';
 

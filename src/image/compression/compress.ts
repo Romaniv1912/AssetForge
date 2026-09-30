@@ -6,6 +6,7 @@ import {
   type CompressionOptions,
   type EncodableFormat,
   type EncodeAttempt,
+  type OutputFormat,
   type ImageAnalysis,
   type ProgressCallback,
   type QualityMetrics,
@@ -49,7 +50,8 @@ const PRUNE_MARGIN = 1.12;
  * candidates wins. `custom` bypasses the search and encodes at a fixed quality.
  */
 export async function compress(input: CompressInput): Promise<CompressOutput> {
-  const { options, analysis, cancel, onProgress } = input;
+  const { analysis, cancel, onProgress } = input;
+  const options = { ...input.options, format: resolveOutputFormat(input.options.format, analysis) };
   const warnings: string[] = [];
   let image = input.image;
 
@@ -272,6 +274,28 @@ function label(id: CandidateId): string {
   }[id];
 }
 
+/**
+ * Resolves `original` to a concrete format: the source format when it can be
+ * written, PNG for GIF/BMP sources, and PNG for a JPEG source that gained
+ * transparency (e.g. after background removal) — JPEG cannot store it.
+ */
+export function resolveOutputFormat(
+  format: OutputFormat,
+  analysis: Pick<ImageAnalysis, 'sourceFormat' | 'hasAlpha'>,
+): Exclude<OutputFormat, 'original'> {
+  if (format !== 'original') return format;
+  switch (analysis.sourceFormat) {
+    case 'png':
+    case 'webp':
+    case 'avif':
+      return analysis.sourceFormat;
+    case 'jpeg':
+      return analysis.hasAlpha ? 'png' : 'jpeg';
+    default:
+      return 'png';
+  }
+}
+
 interface CandidatePlan {
   primary: CandidateId[];
   /** Tried only when no primary candidate meets the target. */
@@ -283,6 +307,7 @@ interface CandidatePlan {
  * candidates; the winner is decided by measured size at equal perceptual quality.
  */
 export function chooseCandidates(options: CompressionOptions, analysis: ImageAnalysis, image: RgbaImage): CandidatePlan {
+  const format = resolveOutputFormat(options.format, analysis);
   const lossless = options.preset === 'custom' && options.custom.lossless;
   const mp = (image.width * image.height) / 1e6;
   const exact = analysis.contentType === 'exact-color';
@@ -293,7 +318,7 @@ export function chooseCandidates(options: CompressionOptions, analysis: ImageAna
   // Lossless WebP is only competitive on graphics; on continuous tone it is large and slow.
   const webpLossless = analysis.uniqueColors <= 4096 || analysis.contentType === 'flat-graphic';
 
-  switch (options.format) {
+  switch (format) {
     case 'png':
       if (lossless) return { primary: ['png-lossless'], fallback: [] };
       if (exact) return { primary: pngQuant ? ['png-quant', 'png-lossless'] : ['png-lossless'], fallback: [] };

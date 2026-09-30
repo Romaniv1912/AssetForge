@@ -182,7 +182,7 @@ const result = await processImage(bytes, {
   backgroundRemoval: { enabled: true, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
   crop: { enabled: true, padding: 8, alphaThreshold: 0 },
   resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
-  compression: { format: 'auto', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
+  compression: { format: 'original', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
 }, { segmentation: runner /* SegmentationRunner, needed when backgroundRemoval.enabled */ });
 
 result.data;             // Uint8Array — the optimised file
@@ -276,6 +276,19 @@ palette error rather than dither grain. PSNR is reported for reference.
 | Balanced | 0.975 | 0.890 | good quality, aggressive compression |
 | Small | 0.960 | 0.830 | smallest files that remain visually usable |
 | Custom | — | — | fixed encoder quality / lossless, no search |
+
+**Output format.** The default, **Same as original**, behaves like TinyPNG:
+PNG stays PNG (smart colour reduction + oxipng), JPEG stays JPEG (MozJPEG),
+WebP stays WebP, AVIF stays AVIF, dimensions are unchanged unless you resize,
+and metadata is stripped. The only exceptions: GIF/BMP become PNG, and a JPEG
+that gained transparency (background removal) becomes PNG. Because Figma
+images are PNG/JPEG, results then replace layers byte-for-byte. **Smallest
+(Auto)** instead lets PNG/JPEG/WebP/AVIF compete for the smallest file.
+
+Measured with `pnpm run benchmark --formats=original` (High preset): astronaut
+PNG 773 → 116 KB (−85%), coffee PNG 456 → 136 KB (−70%), cat PNG
+235 → 67 KB (−71%), logo PNG 176 → 45 KB (−74%), avatar cut-out PNG
+224 → 58 KB (−74%), rocket JPEG 110 → 47 KB (−57%) — all at SSIM ≥ 0.985.
 
 **Encoders and strategies**
 

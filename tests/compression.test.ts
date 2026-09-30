@@ -120,3 +120,30 @@ describe('perceptual compression', () => {
     expect(lossless.validation.metrics.psnr).toBe(Infinity);
   });
 });
+
+describe('"Same as original" (TinyPNG behaviour)', () => {
+  it('keeps PNG as PNG and JPEG as JPEG', async () => {
+    const { processImage } = await import('../src/image/pipeline/process-image');
+    const { options: makeOptions } = await import('./helpers/setup');
+    const opts = makeOptions({ crop: { enabled: false }, compression: { format: 'original', preset: 'high' } });
+
+    const png = await processImage(fixture('coffee.png'), opts);
+    expect(png.format).toBe('png');
+    expect(png.savings).toBeGreaterThan(0.5);
+    expect([png.width, png.height]).toEqual([600, 400]);
+
+    const jpeg = await processImage(fixture('rocket.jpg'), opts);
+    expect(jpeg.format).toBe('jpeg');
+    expect(jpeg.outputBytes).toBeLessThanOrEqual(fixture('rocket.jpg').length);
+  });
+
+  it('resolves the format from the source, switching JPEG to PNG only when transparency appears', async () => {
+    const { resolveOutputFormat } = await import('../src/image/compression/compress');
+    expect(resolveOutputFormat('original', { sourceFormat: 'png', hasAlpha: true })).toBe('png');
+    expect(resolveOutputFormat('original', { sourceFormat: 'jpeg', hasAlpha: false })).toBe('jpeg');
+    expect(resolveOutputFormat('original', { sourceFormat: 'jpeg', hasAlpha: true })).toBe('png');
+    expect(resolveOutputFormat('original', { sourceFormat: 'webp', hasAlpha: true })).toBe('webp');
+    expect(resolveOutputFormat('original', { sourceFormat: 'gif', hasAlpha: false })).toBe('png');
+    expect(resolveOutputFormat('avif', { sourceFormat: 'png', hasAlpha: false })).toBe('avif');
+  });
+});

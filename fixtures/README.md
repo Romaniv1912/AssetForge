@@ -1,7 +1,7 @@
 # Test & benchmark fixtures
 
 Real-world images from the [scikit-image](https://scikit-image.org) sample data
-set (`skimage/data`), used by the test suite and `npm run benchmark`.
+set (`skimage/data`), used by the test suite and `pnpm run benchmark`.
 Synthetic fixtures (gradients, flat graphics, transparent illustrations with
 soft edges, pixel art, huge/tiny images) are generated deterministically by
 `tests/helpers/synthetic.ts`.

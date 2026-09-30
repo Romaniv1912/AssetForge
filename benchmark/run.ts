@@ -1,9 +1,9 @@
 /**
  * AssetForge compression benchmark.
  *
- *   npm run benchmark                         # all images, preset "high", all formats
- *   npm run benchmark -- --presets=all        # tuning sweep over every preset
- *   npm run benchmark -- --formats=png,webp --images=logo,astronaut
+ *   pnpm run benchmark                         # all images, preset "high", all formats
+ *   pnpm run benchmark --presets=all        # tuning sweep over every preset
+ *   pnpm run benchmark --formats=png,webp --images=logo,astronaut
  *
  * For each image, format and preset it runs the production compression engine
  * (same WASM codecs and perceptual search as the plugin) and records size,

@@ -1,8 +1,8 @@
 /**
  * AssetForge vs TinyPNG/TinyJPG comparison.
  *
- *   TINIFY_API_KEY=xxxx npm run benchmark:compare    # fetch TinyPNG results via the official API
- *   npm run benchmark:compare                        # use files already in benchmark/tinypng/
+ *   TINIFY_API_KEY=xxxx pnpm run benchmark:compare    # fetch TinyPNG results via the official API
+ *   pnpm run benchmark:compare                        # use files already in benchmark/tinypng/
  *
  * TinyPNG results are cached in benchmark/tinypng/<name>.<ext>. You can also
  * drop files there manually after compressing the fixtures on tinypng.com.

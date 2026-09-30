@@ -1,7 +1,7 @@
 /**
  * End-to-end smoke test of the *built* plugin UI in Chromium.
  *
- *   npm run build && npm run test:e2e
+ *   pnpm run build && pnpm run test:e2e
  *
  * A mock Figma host (e2e/harness.*) loads dist/index.html into an
  * opaque-origin sandboxed iframe — like Figma — and answers the plugin

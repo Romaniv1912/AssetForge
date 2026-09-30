@@ -27,11 +27,11 @@ Select images in Figma ─▶ Analyze ─▶ Remove background ─▶ Crop trans
 
 ## Quick start
 
-Requirements: Node.js ≥ 20 and the Figma desktop app.
+Requirements: Node.js ≥ 20, [pnpm](https://pnpm.io) ≥ 10 (`corepack enable` picks the pinned version) and the Figma desktop app.
 
 ```bash
-npm install
-npm run build          # typecheck + dist/index.html (UI) + dist/code.js (sandbox)
+pnpm install
+pnpm run build          # typecheck + dist/index.html (UI) + dist/code.js (sandbox)
 ```
 
 In Figma: **Plugins → Development → Import plugin from manifest…** and pick
@@ -43,12 +43,12 @@ them) and run **AssetForge**.
 
 | Script | Purpose |
 | --- | --- |
-| `npm run build` | Typecheck all three TS projects, build UI and sandbox bundles |
-| `npm run dev` | Rebuild UI and sandbox on change |
-| `npm test` | Unit + integration tests (Vitest, real WASM codecs, real ONNX Runtime) |
-| `npm run test:e2e` | Drives the **built** plugin UI in Chromium inside a Figma-like sandboxed iframe (run `npm run build` first) |
-| `npm run benchmark` | Compression benchmark (`--presets=all`, `--formats=png,webp`, `--images=logo,…`) |
-| `npm run benchmark:compare` | AssetForge vs TinyPNG comparison (needs `TINIFY_API_KEY` or cached TinyPNG files) |
+| `pnpm run build` | Typecheck all three TS projects, build UI and sandbox bundles |
+| `pnpm run dev` | Rebuild UI and sandbox on change |
+| `pnpm test` | Unit + integration tests (Vitest, real WASM codecs, real ONNX Runtime) |
+| `pnpm run test:e2e` | Drives the **built** plugin UI in Chromium inside a Figma-like sandboxed iframe (run `pnpm run build` first) |
+| `pnpm run benchmark` | Compression benchmark (`--presets=all`, `--formats=png,webp`, `--images=logo,…`) |
+| `pnpm run benchmark:compare` | AssetForge vs TinyPNG comparison (needs `TINIFY_API_KEY` or cached TinyPNG files) |
 
 ## Phase 1 — Figma runtime investigation and architecture decision
 
@@ -297,7 +297,7 @@ original image hash in plugin data.
 
 ## Benchmark and preset tuning
 
-`npm run benchmark` runs the production engine (same WASM codecs) over real
+`pnpm run benchmark` runs the production engine (same WASM codecs) over real
 photos, an avatar, a transparent avatar cut-out, illustrations, flat graphics,
 gradients, a very detailed image, greyscale text and pixel art (see
 `benchmark/images.ts`, `fixtures/README.md`) and writes Markdown/JSON reports to
@@ -347,14 +347,14 @@ Preset summary over all 12 images (totals are dominated by the real photos; per-
 | small | avif | 2.49 MB | 344.8 KB | 86.5% | 0.9636 | 1.3 s |
 | small | jpeg (opaque only) | 2.26 MB | 554.5 KB | 76.0% | 0.9613 | 1.0 s |
 
-Measured on a cloud container CPU in Node (single-threaded WASM, same binaries as the plugin). Full per-row reports (encoder settings, worst-block SSIM, PSNR) are written by `npm run benchmark`.
+Measured on a cloud container CPU in Node (single-threaded WASM, same binaries as the plugin). Full per-row reports (encoder settings, worst-block SSIM, PSNR) are written by `pnpm run benchmark`.
 <!-- BENCHMARK:END -->
 
 ## TinyPNG comparison
 
 ```bash
-TINIFY_API_KEY=… npm run benchmark:compare            # uses the official Tinify API
-npm run benchmark:compare -- --preset=balanced        # compare another preset
+TINIFY_API_KEY=… pnpm run benchmark:compare            # uses the official Tinify API
+pnpm run benchmark:compare --preset=balanced        # compare another preset
 ```
 
 Outputs from TinyPNG are cached in `benchmark/tinypng/` (you can also drop files
@@ -369,7 +369,7 @@ imitate TinyPNG's proprietary implementation; only outputs are compared.
 
 ## Testing
 
-`npm test` (Vitest, Node) exercises the real WASM codecs and ONNX Runtime:
+`pnpm test` (Vitest, Node) exercises the real WASM codecs and ONNX Runtime:
 
 | Suite | Covers |
 | --- | --- |
@@ -390,10 +390,10 @@ RMBG-1.4 model:
 
 ```bash
 curl -L -o rmbg.onnx https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx
-ASSETFORGE_MODEL_PATH=$PWD/rmbg.onnx npm test -- background-removal
+ASSETFORGE_MODEL_PATH=$PWD/rmbg.onnx pnpm test background-removal
 ```
 
-`npm run test:e2e` (after `npm run build`) loads `dist/index.html` into an
+`pnpm run test:e2e` (after `pnpm run build`) loads `dist/index.html` into an
 opaque-origin sandboxed iframe in Chromium with a mock of the Figma main
 thread, then processes a 4-image batch (one intentionally broken), opens the
 preview, replaces images in "Figma" (asserting only PNG/JPEG reach

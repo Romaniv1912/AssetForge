@@ -6,7 +6,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run typecheck && npm run build:ui && npm run build:plugin",
+    "build": "pnpm run typecheck && pnpm run build:ui && pnpm run build:plugin",
     "build:ui": "vite build --config vite.config.ui.ts",
     "build:plugin": "vite build --config vite.config.plugin.ts",
     "dev": "concurrently -n ui,plugin \"vite build --watch --config vite.config.ui.ts\" \"vite build --watch --config vite.config.plugin.ts\"",
@@ -48,5 +48,18 @@
     "vite": "^8.3.1",
     "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^5.0.2"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "protobufjs"
+    ]
   }
 }

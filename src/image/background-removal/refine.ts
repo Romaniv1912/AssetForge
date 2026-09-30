@@ -348,7 +348,8 @@ export function estimateForeground(image: RgbaImage, alpha: Float32Array, maxWor
     const ty = ay.t[y]!;
     for (let x = 0; x < W; x++) {
       const a = alpha[y * W + x]!;
-      if (a <= 0.002 || a >= 0.998) continue;
+      // Near-zero alpha is invisible: re-colouring it would only create coloured specks.
+      if (a < 0.03 || a >= 0.998) continue;
       const x0 = ax.i0[x]!;
       const x1 = ax.i1[x]!;
       const tx = ax.t[x]!;
@@ -366,6 +367,94 @@ export function estimateForeground(image: RgbaImage, alpha: Float32Array, maxWor
         const v = fBlur + a * (pixel - a * fBlur - (1 - a) * bBlur);
         d[p + c] = Math.round((v < 0 ? 0 : v > 1 ? 1 : v) * 255);
       }
+    }
+  }
+}
+
+export interface CleanMatteOptions {
+  /** Alpha at or above this is "confident foreground". */
+  coreThreshold?: number;
+  /** How far (px) soft/semi-transparent alpha may extend beyond the confident core. */
+  haloRadius?: number;
+  /** Confident blobs smaller than this fraction of the largest one are treated as noise. */
+  minComponentRatio?: number;
+}
+
+/**
+ * Removes background noise from a soft matte, in place.
+ *
+ * Segmentation models leave weak, speckled responses in the background (a few
+ * percent alpha). Invisible on their own, they show up as coloured specks once
+ * edge colours are decontaminated, and they defeat cropping. Semi-transparent
+ * alpha is therefore only kept within `haloRadius` of the confident
+ * foreground — hair, fur and soft shadows next to the object survive, isolated
+ * specks elsewhere are cleared. Tiny isolated confident blobs are dropped too.
+ */
+export function cleanMatte(alpha: Float32Array, width: number, height: number, options: CleanMatteOptions = {}): void {
+  const n = width * height;
+  const coreThreshold = options.coreThreshold ?? 0.5;
+  const radius = Math.max(1, Math.round(options.haloRadius ?? Math.max(8, Math.max(width, height) * 0.02)));
+  const minRatio = options.minComponentRatio ?? 0.002;
+
+  // 1. Label confident regions (4-connected) and measure them.
+  const labels = new Int32Array(n);
+  const sizes: number[] = [0];
+  const queue = new Int32Array(n);
+  for (let start = 0; start < n; start++) {
+    if (labels[start] !== 0 || alpha[start]! < coreThreshold) continue;
+    const label = sizes.length;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    labels[start] = label;
+    while (head < tail) {
+      const i = queue[head++]!;
+      const x = i % width;
+      const visit = (j: number) => {
+        if (labels[j] === 0 && alpha[j]! >= coreThreshold) {
+          labels[j] = label;
+          queue[tail++] = j;
+        }
+      };
+      if (x > 0) visit(i - 1);
+      if (x < width - 1) visit(i + 1);
+      if (i >= width) visit(i - width);
+      if (i < n - width) visit(i + width);
+    }
+    sizes.push(tail);
+  }
+  const largest = Math.max(0, ...sizes);
+  // No confident foreground at all: leave the matte untouched rather than erase it.
+  if (largest === 0) return;
+
+  const keep = new Uint8Array(n);
+  const minSize = largest * minRatio;
+  for (let i = 0; i < n; i++) {
+    const label = labels[i]!;
+    if (label !== 0 && sizes[label]! >= minSize) keep[i] = 1;
+  }
+
+  // 2. Square dilation of the kept core by `radius` (separable, prefix sums).
+  const horizontal = new Uint8Array(n);
+  const prefix = new Int32Array(Math.max(width, height) + 1);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) prefix[x + 1] = prefix[x]! + keep[row + x]!;
+    for (let x = 0; x < width; x++) {
+      const a = Math.max(0, x - radius);
+      const b = Math.min(width, x + radius + 1);
+      horizontal[row + x] = prefix[b]! - prefix[a]! > 0 ? 1 : 0;
+    }
+  }
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) prefix[y + 1] = prefix[y]! + horizontal[y * width + x]!;
+    for (let y = 0; y < height; y++) {
+      const a = Math.max(0, y - radius);
+      const b = Math.min(height, y + radius + 1);
+      const i = y * width + x;
+      const nearCore = prefix[b]! - prefix[a]! > 0;
+      // 3. Outside the zone: background. Dropped noise blobs: background.
+      if (!nearCore || (labels[i] !== 0 && keep[i] === 0)) alpha[i] = 0;
     }
   }
 }

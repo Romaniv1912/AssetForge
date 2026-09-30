@@ -67,6 +67,22 @@ const registry: SegmentationModelSpec[] = [
     performanceNote: '≈44 MB download, a few seconds per image, works without a GPU.',
   },
   {
+    id: 'rmbg-1.4-full',
+    label: 'RMBG-1.4 full precision (sharper)',
+    description: 'The same RMBG-1.4 model without 8-bit quantisation: cleaner edges and fewer mistakes, works without a GPU.',
+    url: 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx',
+    approxBytes: 176_000_000,
+    license: 'bria-rmbg-1.4 (free for non-commercial use)',
+    licenseUrl: 'https://huggingface.co/briaai/RMBG-1.4',
+    commercialUse: 'requires-agreement',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.5, 0.5, 0.5],
+    std: [1, 1, 1],
+    outputNormalization: 'minmax',
+    performanceNote: '≈176 MB download (cached), about twice as slow as the 8-bit version, works without a GPU.',
+    fallback: 'rmbg-1.4',
+  },
+  {
     id: 'rmbg-2.0',
     label: 'RMBG-2.0 (best quality, WebGPU)',
     description:

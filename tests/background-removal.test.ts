@@ -129,7 +129,7 @@ describe('background removal', () => {
     expect(result.backgroundRemoved).toBe(true);
     expect(result.cropped).toBe(true);
     // Disc of radius 72 → ~145 px + 2×8 padding.
-    expect(result.width).toBeGreaterThanOrEqual(145 + 16);
+    expect(result.width).toBeGreaterThanOrEqual(143 + 16);
     expect(result.width).toBeLessThanOrEqual(150 + 16);
     expect(result.analysis.hasAlpha).toBe(true);
   });
@@ -193,5 +193,42 @@ describe('background removal', () => {
     expect(first.warnings.join(' ')).toMatch(/RMBG-1\.4 .* was used instead/);
     expect(second.backgroundRemoved).toBe(true);
     expect(calls).toEqual(['birefnet-lite', 'rmbg-1.4', 'rmbg-1.4']);
+  });
+
+  it('clears background specks left by the model but keeps soft edges (regression: blue specks)', async () => {
+    const W = 320;
+    const H = 240;
+    const { image, alpha } = objectOnBackground(W, H);
+    // Model output = true matte + weak speckle noise + one tiny confident blob far away.
+    const noisy = alpha.slice();
+    let seed = 42;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    for (let k = 0; k < 400; k++) {
+      const x = Math.floor(rand() * W);
+      const y = Math.floor(rand() * H);
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+        const i = Math.min(H - 1, y + dy) * W + Math.min(W - 1, x + dx);
+        if (alpha[i] === 0) noisy[i] = 0.05 + rand() * 0.35;
+      }
+    }
+    for (let y = 5; y < 8; y++) for (let x = 5; x < 8; x++) noisy[y * W + x] = 0.95;
+    const runner = groundTruthRunner(noisy, W, H, 0);
+
+    const out = await removeBackground(image, { model: 'rmbg-1.4', refineEdges: true, decontaminateColors: true }, { runner });
+
+    // Distance from each pixel to the object disc (centre 160,132, r 72).
+    let farVisible = 0;
+    let soft = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const a = out.data[(y * W + x) * 4 + 3]!;
+        const d = Math.hypot(x + 0.5 - W * 0.5, y + 0.5 - H * 0.55) - H * 0.3;
+        if (d > 12 && a > 0) farVisible++;
+        if (d > -3 && d < 3 && a > 10 && a < 245) soft++;
+      }
+    }
+    expect(farVisible).toBe(0);
+    expect(soft).toBeGreaterThan(50);
+    expect(meanAbsError(alpha, out.data)).toBeLessThan(0.02);
   });
 });

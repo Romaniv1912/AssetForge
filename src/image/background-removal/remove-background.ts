@@ -2,7 +2,7 @@ import { resample } from '../codecs';
 import { flattenOnto } from '../compression/compress';
 import { throwIfCancelled, type BackgroundRemovalOptions, type CancellationToken, type ProgressCallback, type RgbaImage } from '../types';
 import { getModelSpec, modelInputSize, type SegmentationModelSpec } from './models';
-import { bilinearResize, estimateForeground, guidedUpsample, type Plane } from './refine';
+import { bilinearResize, cleanMatte, estimateForeground, guidedUpsample, type Plane } from './refine';
 import { ModelUnavailableError, type SegmentationRunner } from './runner';
 
 export interface RemoveBackgroundContext {
@@ -17,7 +17,7 @@ export interface RemoveBackgroundContext {
 const unusableModels = new Map<string, string>();
 
 /** Alpha below this is treated as background noise; above the upper bound as solid. */
-const ALPHA_FLOOR = 3 / 255;
+const ALPHA_FLOOR = 8 / 255;
 const ALPHA_CEIL = 252 / 255;
 
 /**
@@ -86,6 +86,8 @@ export async function removeBackground(
   } else {
     alpha = bilinearResize(mask, W, H).data;
   }
+
+  cleanMatte(alpha, W, H);
 
   const out: RgbaImage = { width: W, height: H, data: new Uint8ClampedArray(image.data) };
   const d = out.data;

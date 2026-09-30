@@ -1,0 +1,52 @@
+{
+  "name": "assetforge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AssetForge \u2014 Figma plugin for background removal, smart crop, resize and perceptual image compression.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "npm run typecheck && npm run build:ui && npm run build:plugin",
+    "build:ui": "vite build --config vite.config.ui.ts",
+    "build:plugin": "vite build --config vite.config.plugin.ts",
+    "dev": "concurrently -n ui,plugin \"vite build --watch --config vite.config.ui.ts\" \"vite build --watch --config vite.config.plugin.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.plugin.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "benchmark": "tsx benchmark/run.ts",
+    "benchmark:compare": "tsx benchmark/compare.ts",
+    "test:e2e": "tsx e2e/smoke.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Romaniv1912/ImageKit.git"
+  },
+  "dependencies": {
+    "@jsquash/avif": "^2.1.1",
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/oxipng": "^2.3.0",
+    "@jsquash/png": "^3.1.1",
+    "@jsquash/resize": "^2.1.1",
+    "@jsquash/webp": "^1.5.0",
+    "fflate": "^0.8.3",
+    "image-q": "^4.0.0",
+    "onnxruntime-web": "^1.30.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "wasm-feature-detect": "^1.9.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.139.0",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.2"
+  }
+}

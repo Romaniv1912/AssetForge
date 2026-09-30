@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+benchmark/results/
+*.log
+.DS_Store
+.env
+.models/
+e2e/screenshots/

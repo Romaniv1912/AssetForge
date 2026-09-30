@@ -1,0 +1,18 @@
+{
+  "name": "AssetForge",
+  "id": "1500000000000000000",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/index.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://cdn.jsdelivr.net",
+      "https://huggingface.co",
+      "https://*.huggingface.co",
+      "https://*.hf.co"
+    ],
+    "reasoning": "Background removal runs locally. On first use the plugin downloads the ONNX Runtime WebAssembly binary (jsDelivr) and the segmentation model (Hugging Face). Images are never uploaded."
+  }
+}

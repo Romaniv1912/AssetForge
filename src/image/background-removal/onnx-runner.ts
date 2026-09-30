@@ -1,7 +1,7 @@
 import type * as Ort from 'onnxruntime-web';
 import type { StageProgress } from '../types';
 import { getModelSpec } from './models';
-import { isOutOfMemory, ModelUnavailableError, type ModelAccess, type SegmentationMask, type SegmentationRunner } from './runner';
+import { isOutOfMemory, ModelUnavailableError, type SegmentationMask, type SegmentationRunner } from './runner';
 
 type OrtModule = typeof Ort;
 
@@ -20,7 +20,7 @@ export interface OnnxRunnerConfig {
    */
   loadRuntime: (onProgress?: (p: StageProgress) => void) => Promise<OrtRuntime>;
   /** Downloads (or reads from cache) a model file. */
-  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void, access?: ModelAccess) => Promise<Uint8Array>;
+  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void) => Promise<Uint8Array>;
 }
 
 /**
@@ -47,12 +47,11 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
     width: number,
     height: number,
     onProgress?: (p: StageProgress) => void,
-    access?: ModelAccess,
   ): Promise<SegmentationMask> {
     const task = this.queue.then(async () => {
       const known = this.unavailable.get(modelId);
       if (known) throw new ModelUnavailableError(known, modelId);
-      const session = await this.session(modelId, onProgress, access);
+      const session = await this.session(modelId, onProgress);
       const { ort } = await this.runtime!;
       onProgress?.({ stage: 'removing-background', detail: 'Segmenting' });
       const input = new ort.Tensor('float32', tensor, [1, 3, height, width]);
@@ -87,7 +86,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
     return task;
   }
 
-  private session(modelId: string, onProgress?: (p: StageProgress) => void, access?: ModelAccess): Promise<Ort.InferenceSession> {
+  private session(modelId: string, onProgress?: (p: StageProgress) => void): Promise<Ort.InferenceSession> {
     let pending = this.sessions.get(modelId);
     if (!pending) {
       pending = (async () => {
@@ -107,13 +106,13 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
           this.unavailable.set(modelId, message);
           throw new ModelUnavailableError(message, modelId);
         }
-        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress, access);
+        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress);
         if (gpu) {
           // GPU-specific variant (e.g. fp16) when the model provides one.
           const variant = spec.webgpu ?? { url: spec.url, approxBytes: spec.approxBytes };
-          // Download errors (network, gated access) are reported as they are —
+          // Download errors (network, access) are reported as they are —
           // only a failure to *start* the model means it cannot run here.
-          const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress, access);
+          const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress);
           try {
             onProgress?.({ stage: 'removing-background', detail: 'Initialising model (WebGPU)' });
             return await runtime.ort.InferenceSession.create(model, { ...options, executionProviders: runtime.executionProviders });
@@ -172,7 +171,6 @@ export async function fetchWithCache(
   label: string,
   onProgress?: (p: StageProgress) => void,
   stage: StageProgress['stage'] = 'removing-background',
-  access?: ModelAccess,
 ): Promise<Uint8Array> {
   const cache = await openCache();
   if (cache) {
@@ -186,20 +184,10 @@ export async function fetchWithCache(
 
   let response: Response;
   try {
-    const headers: Record<string, string> = {};
-    // Tokens are only ever sent to Hugging Face itself (gated model downloads).
-    if (access?.huggingFaceToken && /(^|\.)huggingface\.co$/.test(new URL(url).hostname)) {
-      headers.Authorization = `Bearer ${access.huggingFaceToken.trim()}`;
-    }
-    response = await fetch(url, { mode: 'cors', credentials: 'omit', headers });
+    response = await fetch(url, { mode: 'cors', credentials: 'omit' });
   } catch (error) {
     throw new Error(
       `Could not download ${label}. Check your internet connection (and that ${new URL(url).host} is allowed). ${String(error)}`,
-    );
-  }
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(
-      `Downloading ${label} was refused (HTTP ${response.status}). This model is gated: accept its licence on huggingface.co while signed in, then enter a Hugging Face access token (read) in the Background settings.`,
     );
   }
   if (!response.ok) throw new Error(`Downloading ${label} failed: HTTP ${response.status}`);

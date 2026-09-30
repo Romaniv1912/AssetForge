@@ -518,14 +518,6 @@ button.selection__row:hover {
   color: var(--text-secondary);
 }
 
-.hint--warning {
-  color: var(--warning);
-}
-
-.hint--ok {
-  color: var(--success);
-}
-
 /* Checkbox (UI3: 16 px box, 4 px radius) */
 .checkbox {
   display: flex;

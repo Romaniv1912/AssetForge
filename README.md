@@ -209,19 +209,17 @@ dedicated worker. Nothing is uploaded.
 | --- | --- | --- | --- |
 | `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net, 8-bit | ≈ 44 MB | fast, works on any machine | bria-rmbg-1.4, non-commercial |
 | `rmbg-1.4-full` — same model, full precision (fp32) | ≈ 176 MB | cleaner edges and fewer mistakes, ~2× slower | bria-rmbg-1.4, non-commercial |
-| `rmbg-2.0` — BRIA RMBG-2.0 (BiRefNet architecture), fp16 | ≈ 514 MB | best quality; **WebGPU only**; gated on Hugging Face — needs a read token (Background settings) | CC BY-NC 4.0, non-commercial |
 
 AssetForge is an open, non-commercial project, so the non-commercial RMBG
 licence is fine here.
 
-**RMBG-2.0 needs WebGPU.** On the WebAssembly CPU backend its 1024²
-activations exceed the 4 GB heap (`std::bad_alloc`), so it only starts when
-WebGPU is available. Figma currently creates the plugin window as a non-secure
-context, where browsers do not expose WebGPU — there the plugin shows the reason
-under the model picker and automatically falls back to RMBG-1.4. To download it,
-accept the licence on [briaai/RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0)
-and paste a Hugging Face *read* token into the Background settings (stored only
-locally, sent only to huggingface.co).
+**Why not RMBG-2.0 / BiRefNet?** They are stronger, but 1024² transformer
+models need WebGPU: on the WebAssembly CPU backend their activations exceed the
+4 GB heap (`OrtRun() … std::bad_alloc`). Figma creates the plugin window as a
+non-secure context, where browsers do not expose WebGPU, so these models cannot
+run inside the Figma plugin. The registry still supports WebGPU-only models
+(`requiresWebGpu`) with an automatic `fallback`, so they can be re-added via
+`registerSegmentationModel()` if the UI is ever served from an https origin.
 
 How it works:
 

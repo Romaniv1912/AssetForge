@@ -130,32 +130,3 @@ export function Slider(props: { label: string; value: number; min: number; max: 
     </div>
   );
 }
-
-export function TextField(props: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  secret?: boolean;
-}) {
-  const id = useId();
-  return (
-    <div className="field">
-      <label htmlFor={id} className="field__label">
-        {props.label}
-      </label>
-      <div className="field__control">
-        <input
-          id={id}
-          className="input"
-          type={props.secret ? 'password' : 'text'}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={props.placeholder}
-          value={props.value}
-          onChange={(e) => props.onChange(e.target.value)}
-        />
-      </div>
-    </div>
-  );
-}

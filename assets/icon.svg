@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="8" x2="116" y2="124" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5B5BF6"/>
+      <stop offset="1" stop-color="#A43BF0"/>
+    </linearGradient>
+    <pattern id="checker" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#FFFFFF" fill-opacity="0.28"/>
+      <rect width="5" height="5" fill="#FFFFFF" fill-opacity="0.55"/>
+      <rect x="5" y="5" width="5" height="5" fill="#FFFFFF" fill-opacity="0.55"/>
+    </pattern>
+    <clipPath id="card"><rect x="26" y="30" width="76" height="68" rx="10"/></clipPath>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- Image card: the lower-right half is "removed background" (transparency checker) -->
+  <g clip-path="url(#card)">
+    <rect x="26" y="30" width="76" height="68" fill="url(#checker)"/>
+    <path d="M26 30H102L26 98Z" fill="#FFFFFF"/>
+    <circle cx="44" cy="48" r="7" fill="#F9B233"/>
+    <path d="M26 86 46 64l12 12 10-10 12 10L36 98H26Z" fill="#5B5BF6"/>
+  </g>
+  <rect x="26" y="30" width="76" height="68" rx="10" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Forge spark: optimisation -->
+  <path d="M100 76l4.5 11.5L116 92l-11.5 4.5L100 108l-4.5-11.5L84 92l11.5-4.5Z" fill="#FFFFFF"/>
+</svg>

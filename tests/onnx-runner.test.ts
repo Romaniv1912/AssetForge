@@ -92,4 +92,50 @@ describe('ONNX Runtime segmentation runner', () => {
     expect(alphaAt(Math.round(image.width * 0.3), Math.round(image.height * 0.3))).toBeGreaterThan(64);
     await runner.dispose();
   });
+
+  it('uses the WebGPU model variant and falls back to the CPU model when WebGPU fails', async () => {
+    registerSegmentationModel({
+      id: 'tiny-gpu-test',
+      label: 'Tiny GPU test model',
+      description: 'variant selection',
+      url: 'https://example.invalid/cpu.onnx',
+      approxBytes: 276,
+      webgpu: { url: 'https://example.invalid/gpu-fp16.onnx', approxBytes: 138 },
+      license: 'MIT',
+      licenseUrl: 'https://example.invalid',
+      commercialUse: 'allowed',
+      input: { kind: 'fixed', width: 32, height: 32 },
+      mean: [0, 0, 0],
+      std: [1, 1, 1],
+      outputNormalization: 'sigmoid',
+    });
+    const requested: string[] = [];
+    const providers: string[][] = [];
+    const ort = await import('onnxruntime-web/wasm');
+    ort.env.wasm.wasmBinary = readFileSync(require.resolve('onnxruntime-web/ort-wasm-simd-threaded.wasm'));
+    ort.env.wasm.numThreads = 1;
+    // Wrap the real runtime: pretend WebGPU exists but cannot create the session.
+    const fakeOrt = {
+      ...ort,
+      InferenceSession: {
+        create: async (model: Uint8Array, options: { executionProviders: string[] }) => {
+          providers.push(options.executionProviders);
+          if (options.executionProviders.includes('webgpu')) throw new Error('no shader-f16');
+          return ort.InferenceSession.create(model, { executionProviders: ['wasm'] });
+        },
+      },
+    };
+    const runner = new OnnxSegmentationRunner({
+      loadRuntime: async () => ({ ort: fakeOrt as never, executionProviders: ['webgpu', 'wasm'], label: 'WebGPU' }),
+      loadModel: async (url) => {
+        requested.push(url);
+        return new Uint8Array(readFileSync(modelPath));
+      },
+    });
+    const mask = await runner.run('tiny-gpu-test', new Float32Array(3 * 32 * 32), 32, 32);
+    expect(mask.width).toBe(32);
+    expect(requested).toEqual(['https://example.invalid/gpu-fp16.onnx', 'https://example.invalid/cpu.onnx']);
+    expect(providers).toEqual([['webgpu', 'wasm'], ['wasm']]);
+    await runner.dispose();
+  });
 });

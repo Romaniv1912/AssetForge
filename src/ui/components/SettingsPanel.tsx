@@ -38,14 +38,15 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
               onChange={(value) => set('backgroundRemoval', { model: value })}
             />
             <p className="hint">
-              Runs locally — images never leave your computer. First use downloads the model (~
-              {Math.round(model.approxBytes / 1e6)} MB) and ML runtime, then caches them.
+              Runs locally — images never leave your computer. {model.performanceNote ?? ''} The model is downloaded on
+              first use and cached. Licence: {model.license}
               {model.commercialUse === 'requires-agreement' && (
                 <>
                   {' '}
-                  <strong>Licence:</strong> {model.license}; commercial use needs an agreement with the model owner.
+                  — <strong>commercial use needs an agreement with the model owner</strong>
                 </>
               )}
+              .
             </p>
             <Checkbox
               label="Refine edges"

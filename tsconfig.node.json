@@ -7,6 +7,7 @@
   "include": [
     "tests",
     "e2e",
+    "assets",
     "benchmark",
     "build",
     "vite.config.ui.ts",

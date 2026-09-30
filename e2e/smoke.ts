@@ -57,7 +57,7 @@ async function main() {
   // Background removal off: it needs to download the model, which CI may not allow.
   await page.addInitScript(() => {
     (window as unknown as { __initialOptions: unknown }).__initialOptions = {
-      backgroundRemoval: { enabled: false, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
+      backgroundRemoval: { enabled: false, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
       crop: { enabled: true, padding: 8, alphaThreshold: 0 },
       resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
       compression: { format: 'auto', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },

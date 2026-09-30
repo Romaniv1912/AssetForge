@@ -16,9 +16,17 @@ export interface SegmentationModelSpec {
   id: string;
   label: string;
   description: string;
+  /** Model used on the CPU (WASM) backend. */
   url: string;
   /** Approximate download size, for progress display before Content-Length is known. */
   approxBytes: number;
+  /**
+   * Optional variant for the WebGPU backend (typically fp16: half the download,
+   * much faster on GPU, but not supported by the CPU backend).
+   */
+  webgpu?: { url: string; approxBytes: number };
+  /** Short note shown in the UI about speed/size trade-offs. */
+  performanceNote?: string;
   license: string;
   licenseUrl: string;
   commercialUse: 'allowed' | 'requires-agreement';
@@ -26,15 +34,39 @@ export interface SegmentationModelSpec {
   /** Per-channel normalisation applied to [0,1] RGB: (x - mean) / std. */
   mean: [number, number, number];
   std: [number, number, number];
-  /** Rescale the raw output to [0,1] by its min/max (models trained with un-normalised logits). */
-  outputNormalization: 'none' | 'minmax';
+  /**
+   * How to map the raw output to [0,1]: `sigmoid` for logit outputs,
+   * `minmax` to rescale by the output's range, `none` when already a matte.
+   */
+  outputNormalization: 'none' | 'minmax' | 'sigmoid';
 }
 
 const registry: SegmentationModelSpec[] = [
   {
+    id: 'birefnet-lite',
+    label: 'BiRefNet lite (best quality)',
+    description:
+      'BiRefNet lite (Swin-T, 1024²): high-resolution dichotomous segmentation with very clean edges and fine detail (hair, fur, thin structures). MIT licensed.',
+    // fp32 for the CPU backend (the WASM CPU EP has no fast fp16 kernels).
+    url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx',
+    approxBytes: 224_000_000,
+    webgpu: {
+      url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model_fp16.onnx',
+      approxBytes: 115_000_000,
+    },
+    performanceNote: 'Fast with WebGPU (≈115 MB download). Without a GPU it downloads ≈224 MB and takes tens of seconds per image.',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
+    commercialUse: 'allowed',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+    outputNormalization: 'sigmoid',
+  },
+  {
     id: 'rmbg-1.4',
-    label: 'RMBG-1.4 (general)',
-    description: 'BRIA RMBG-1.4 (IS-Net architecture). Best general-purpose quality: products, people, animals, objects.',
+    label: 'RMBG-1.4 (fast, non-commercial)',
+    description: 'BRIA RMBG-1.4 (IS-Net architecture). Good general-purpose quality, small (8-bit) and fast on CPU.',
     url: 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx',
     approxBytes: 44_403_226,
     license: 'bria-rmbg-1.4 (free for non-commercial use)',
@@ -44,6 +76,7 @@ const registry: SegmentationModelSpec[] = [
     mean: [0.5, 0.5, 0.5],
     std: [1, 1, 1],
     outputNormalization: 'minmax',
+    performanceNote: '≈44 MB download, a few seconds per image on CPU.',
   },
   {
     id: 'modnet',
@@ -58,13 +91,14 @@ const registry: SegmentationModelSpec[] = [
     mean: [0.5, 0.5, 0.5],
     std: [0.5, 0.5, 0.5],
     outputNormalization: 'none',
+    performanceNote: '≈7 MB download, the fastest option.',
   },
 ];
 
 /** Live view of the registry (includes models added with `registerSegmentationModel`). */
 export const SEGMENTATION_MODELS: readonly SegmentationModelSpec[] = registry;
 
-export const DEFAULT_SEGMENTATION_MODEL = 'rmbg-1.4';
+export const DEFAULT_SEGMENTATION_MODEL = 'birefnet-lite';
 
 /**
  * Adds (or replaces) a model at runtime, e.g. a self-hosted copy or a custom

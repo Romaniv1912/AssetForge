@@ -50,6 +50,13 @@ them) and run **AssetForge**.
 | `pnpm run benchmark` | Compression benchmark (`--presets=all`, `--formats=png,webp`, `--images=logo,…`) |
 | `pnpm run benchmark:compare` | AssetForge vs TinyPNG comparison (needs `TINIFY_API_KEY` or cached TinyPNG files) |
 
+### Plugin icon and cover
+
+Figma does not read an icon from `manifest.json`; the icon (128×128) and the
+Community cover (1920×960) are uploaded in the publish dialog. They live in
+`assets/` (`icon.svg` is the source; `pnpm run assets` re-renders
+`icon-128.png`, `icon-512.png` and `cover.png`).
+
 ## Phase 1 — Figma runtime investigation and architecture decision
 
 A Figma plugin has two execution contexts. Every decision below follows from
@@ -172,7 +179,7 @@ import { nodeWasmProvider } from './src/image/codecs/providers/node';
 setWasmBinaryProvider(nodeWasmProvider); // browser builds embed the binaries instead
 
 const result = await processImage(bytes, {
-  backgroundRemoval: { enabled: true, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
+  backgroundRemoval: { enabled: true, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
   crop: { enabled: true, padding: 8, alphaThreshold: 0 },
   resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
   compression: { format: 'auto', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
@@ -198,12 +205,21 @@ dedicated worker. Nothing is uploaded.
 
 | Model | Best for | Download | Licence |
 | --- | --- | --- | --- |
-| `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net architecture, 8-bit quantised | products, people, animals, general objects | ≈ 44 MB | **bria-rmbg-1.4: free for non-commercial use; commercial use requires an agreement with BRIA** |
-| `modnet` — MODNet, quantised | portraits / avatars only | ≈ 7 MB | Apache-2.0 |
+| `birefnet-lite` (default) — BiRefNet lite (Swin-T), 1024² | best edges and fine detail (hair, fur, thin structures), products, people, objects | ≈ 115 MB fp16 with WebGPU / ≈ 224 MB fp32 on CPU | **MIT** — commercial use allowed |
+| `rmbg-1.4` — BRIA RMBG-1.4, IS-Net, 8-bit quantised | fast general-purpose on CPU | ≈ 44 MB | bria-rmbg-1.4: **non-commercial**; commercial use requires an agreement with BRIA |
+| `modnet` — MODNet, quantised | portraits / avatars only, fastest | ≈ 7 MB | Apache-2.0 |
 
-> ⚠️ Check the model licence against your use. For commercial distribution
-> either license RMBG-1.4 from BRIA, use `modnet` (portraits), or register your
-> own model (below).
+Why BiRefNet lite is the default: BiRefNet is the open-source state of the art
+for high-resolution dichotomous segmentation (BRIA itself reports BiRefNet well
+ahead of RMBG-1.4 in their benchmark), and it is MIT licensed, so it is safe for
+commercial use. It is heavier: with WebGPU the fp16 variant is used and runs
+fast; on CPU-only machines the fp32 model is used and takes tens of seconds per
+image — pick `rmbg-1.4` or `modnet` there. If WebGPU cannot create the session
+(no fp16 support, adapter limits) the runner falls back to the CPU model
+automatically. Considered but not bundled: **RMBG-2.0** (BiRefNet trained on
+BRIA's data, best quality, but CC BY-NC and ~2× the size) and **BEN2** (MIT,
+strong matting, but no maintained browser ONNX export at the time of writing) —
+both can be added with `registerSegmentationModel()`.
 
 How it works:
 
@@ -214,8 +230,8 @@ How it works:
    session serves the entire batch; the model is never reloaded per image.
    Downloads are served from the HTTP cache afterwards (and from Cache Storage
    where the browser allows it).
-2. **Inference** at the model's native resolution (1024² for RMBG, short side
-   512 for MODNet), WebGPU when an adapter exists, WASM SIMD otherwise.
+2. **Inference** at the model's native resolution (1024² for BiRefNet and RMBG,
+   short side 512 for MODNet), WebGPU when an adapter exists, WASM SIMD otherwise.
 3. **Edge refinement** — a colour *Fast Guided Filter* (He & Sun, 2015): the
    linear model is solved at model resolution and applied at full resolution,
    so the matte snaps to real edges (hair, fur, outlines) instead of being a
@@ -391,6 +407,10 @@ RMBG-1.4 model:
 ```bash
 curl -L -o rmbg.onnx https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx
 ASSETFORGE_MODEL_PATH=$PWD/rmbg.onnx pnpm test background-removal
+
+# BiRefNet lite (fp32 CPU file):
+curl -L -o birefnet.onnx https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx
+ASSETFORGE_MODEL_ID=birefnet-lite ASSETFORGE_MODEL_PATH=$PWD/birefnet.onnx pnpm test background-removal
 ```
 
 `pnpm run test:e2e` (after `pnpm run build`) loads `dist/index.html` into an
@@ -421,7 +441,7 @@ worker (CDN downloads are routed to local files). Screenshots are saved to
 ## Limitations
 
 - **Real-model verification:** background removal was verified end-to-end with
-  a tiny ONNX model and ground-truth mattes; the RMBG-1.4/MODNet downloads could
+  a tiny ONNX model and ground-truth mattes; the BiRefNet/RMBG-1.4/MODNet downloads could
   not be exercised in the build environment (no access to Hugging Face). Run the
   optional integration test above to validate your model choice.
 - AVIF encoding is single-threaded (no `SharedArrayBuffer` in the Figma iframe)

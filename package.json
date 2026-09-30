@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "benchmark": "tsx benchmark/run.ts",
     "benchmark:compare": "tsx benchmark/compare.ts",
-    "test:e2e": "tsx e2e/smoke.ts"
+    "test:e2e": "tsx e2e/smoke.ts",
+    "assets": "tsx assets/render.ts"
   },
   "repository": {
     "type": "git",

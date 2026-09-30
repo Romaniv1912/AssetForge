@@ -82,20 +82,25 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
           throw error;
         }
         const spec = getModelSpec(modelId);
-        const model = await this.config.loadModel(spec.url, spec.approxBytes, onProgress);
-        onProgress?.({ stage: 'removing-background', detail: 'Initialising model' });
-        try {
-          return await runtime.ort.InferenceSession.create(model, {
-            executionProviders: runtime.executionProviders,
-            graphOptimizationLevel: 'all',
-          });
-        } catch (error) {
-          if (runtime.executionProviders.includes('wasm') && runtime.executionProviders.length > 1) {
-            // e.g. WebGPU adapter present but an operator is unsupported: fall back to CPU.
-            return runtime.ort.InferenceSession.create(model, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+        const options = { graphOptimizationLevel: 'all' } as const;
+        const gpu = runtime.executionProviders.includes('webgpu');
+        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress);
+        if (gpu) {
+          // GPU-specific variant (e.g. fp16) when the model provides one.
+          const variant = spec.webgpu ?? { url: spec.url, approxBytes: spec.approxBytes };
+          try {
+            const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress);
+            onProgress?.({ stage: 'removing-background', detail: 'Initialising model (WebGPU)' });
+            return await runtime.ort.InferenceSession.create(model, { ...options, executionProviders: runtime.executionProviders });
+          } catch (error) {
+            if (!runtime.executionProviders.includes('wasm')) throw error;
+            // WebGPU unusable for this model (adapter limits, missing fp16, unsupported op): use the CPU.
+            console.warn('[AssetForge] WebGPU session failed, falling back to CPU:', error);
           }
-          throw error;
         }
+        const model = await cpuModel();
+        onProgress?.({ stage: 'removing-background', detail: 'Initialising model' });
+        return runtime.ort.InferenceSession.create(model, { ...options, executionProviders: ['wasm'] });
       })();
       pending.catch(() => this.sessions.delete(modelId));
       this.sessions.set(modelId, pending);

@@ -106,6 +106,10 @@ export function toTensor(image: RgbaImage, spec: Pick<SegmentationModelSpec, 'me
 
 export function normalizeMask(data: Float32Array, spec: Pick<SegmentationModelSpec, 'outputNormalization'>): Float32Array {
   const out = new Float32Array(data.length);
+  if (spec.outputNormalization === 'sigmoid') {
+    for (let i = 0; i < data.length; i++) out[i] = 1 / (1 + Math.exp(-data[i]!));
+    return out;
+  }
   if (spec.outputNormalization === 'minmax') {
     let min = Infinity;
     let max = -Infinity;

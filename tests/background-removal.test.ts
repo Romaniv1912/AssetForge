@@ -43,6 +43,11 @@ describe('background removal', () => {
       expect(['allowed', 'requires-agreement']).toContain(m.commercialUse);
     }
     expect(modelInputSize(getModelSpec('rmbg-1.4'), 3000, 2000)).toEqual({ width: 1024, height: 1024 });
+    const birefnet = getModelSpec('birefnet-lite');
+    expect(birefnet.commercialUse).toBe('allowed');
+    expect(birefnet.outputNormalization).toBe('sigmoid');
+    expect(birefnet.mean).toEqual([0.485, 0.456, 0.406]);
+    expect(birefnet.webgpu?.url).toMatch(/fp16\.onnx$/);
     const modnet = modelInputSize(getModelSpec('modnet'), 3000, 2000);
     expect(modnet.height).toBe(512);
     expect(modnet.width % 32).toBe(0);
@@ -54,6 +59,10 @@ describe('background removal', () => {
     expect(Array.from(t).map((v) => Number(v.toFixed(3)))).toEqual([1, 1, -1, -1, 0.004, 0.004]);
     expect(Array.from(normalizeMask(Float32Array.of(2, 4, 6), { outputNormalization: 'minmax' }))).toEqual([0, 0.5, 1]);
     expect(Array.from(normalizeMask(Float32Array.of(-1, 0.5, 3), { outputNormalization: 'none' }))).toEqual([0, 0.5, 1]);
+    const sig = normalizeMask(Float32Array.of(-20, 0, 20), { outputNormalization: 'sigmoid' });
+    expect(sig[0]).toBeLessThan(1e-6);
+    expect(sig[1]).toBeCloseTo(0.5, 6);
+    expect(sig[2]).toBeGreaterThan(1 - 1e-6);
   });
 
   it('produces a soft matte that follows the true object edge', async () => {
@@ -135,8 +144,11 @@ describe('background removal', () => {
 
   // Real-model integration test. Download a model (see README) and set
   // ASSETFORGE_MODEL_PATH=/path/to/model_quantized.onnx (RMBG-1.4) to run it.
+  // ASSETFORGE_MODEL_ID selects the registry entry the file belongs to (default rmbg-1.4,
+  // e.g. birefnet-lite with the fp32 onnx/model.onnx file).
   const modelPath = process.env.ASSETFORGE_MODEL_PATH;
-  it.runIf(modelPath && existsSync(modelPath))('real RMBG-1.4 model separates a portrait from its background', async () => {
+  const modelId = process.env.ASSETFORGE_MODEL_ID ?? 'rmbg-1.4';
+  it.runIf(modelPath && existsSync(modelPath))('a real segmentation model separates a portrait from its background', async () => {
     const { OnnxSegmentationRunner } = await import('../src/image/background-removal/onnx-runner');
     const ort = await import('onnxruntime-web/wasm');
     ort.env.wasm.numThreads = 1;
@@ -146,7 +158,7 @@ describe('background removal', () => {
     });
     const result = await processImage(
       fixture('astronaut.png'),
-      options({ backgroundRemoval: { enabled: true, model: 'rmbg-1.4', skipIfTransparent: false }, compression: { format: 'png' } }),
+      options({ backgroundRemoval: { enabled: true, model: modelId, skipIfTransparent: false }, compression: { format: 'png' } }),
       { segmentation: runner },
     );
     expect(result.backgroundRemoved).toBe(true);

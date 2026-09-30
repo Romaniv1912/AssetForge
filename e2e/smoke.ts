@@ -187,7 +187,7 @@ async function main() {
   await frame.getByRole('tab', { name: 'Settings' }).click();
   await page.screenshot({ path: `${shots}08-dark-settings.png` });
 
-  const relevantErrors = errors.filter((e) => !/favicon|fonts\.g(oogleapis|static)\.com/.test(e));
+  const relevantErrors = errors.filter((e) => !/favicon|fonts\.g(oogleapis|static)\.com|WebGPU Context Provider/.test(e));
   if (errors.length) console.log('Console:', errors.join('\n'));
   assert(relevantErrors.length === 0, `no page errors: ${relevantErrors.join(' | ')}`);
   await browser.close();

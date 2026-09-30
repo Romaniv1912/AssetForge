@@ -9,6 +9,8 @@ export interface OrtRuntime {
   ort: OrtModule;
   executionProviders: string[];
   label: string;
+  /** Why WebGPU is or is not in use (shown when a WebGPU-only model cannot run). */
+  webgpuStatus?: string;
 }
 
 export interface OnnxRunnerConfig {
@@ -101,7 +103,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
         const options = { graphOptimizationLevel: 'all' } as const;
         const gpu = runtime.executionProviders.includes('webgpu');
         if (!gpu && spec.requiresWebGpu) {
-          const message = `${spec.label} needs WebGPU, which is not available here.`;
+          const message = `${spec.label} needs WebGPU. ${runtime.webgpuStatus ?? 'WebGPU is not available here.'}`;
           this.unavailable.set(modelId, message);
           throw new ModelUnavailableError(message, modelId);
         }
@@ -109,14 +111,15 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
         if (gpu) {
           // GPU-specific variant (e.g. fp16) when the model provides one.
           const variant = spec.webgpu ?? { url: spec.url, approxBytes: spec.approxBytes };
+          // Download errors (network, gated access) are reported as they are —
+          // only a failure to *start* the model means it cannot run here.
+          const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress, access);
           try {
-            const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress, access);
             onProgress?.({ stage: 'removing-background', detail: 'Initialising model (WebGPU)' });
             return await runtime.ort.InferenceSession.create(model, { ...options, executionProviders: runtime.executionProviders });
           } catch (error) {
-            if (error instanceof Error && /refused \(HTTP/.test(error.message)) throw error;
             if (spec.requiresWebGpu || isOutOfMemory(error)) {
-              const message = `${spec.label} could not start on WebGPU (${error instanceof Error ? error.message : String(error)}).`;
+              const message = `${spec.label} could not start on WebGPU: ${error instanceof Error ? error.message : String(error)}. ${runtime.webgpuStatus ?? ''}`.trim();
               this.unavailable.set(modelId, message);
               throw new ModelUnavailableError(message, modelId);
             }

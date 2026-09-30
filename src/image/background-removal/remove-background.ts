@@ -13,8 +13,8 @@ export interface RemoveBackgroundContext {
   onWarning?: (message: string) => void;
 }
 
-/** Models found unusable in this worker; later images go straight to the fallback. */
-const unusableModels = new Set<string>();
+/** Models found unusable in this worker (with the reason); later images go straight to the fallback. */
+const unusableModels = new Map<string, string>();
 
 /** Alpha below this is treated as background noise; above the upper bound as solid. */
 const ALPHA_FLOOR = 3 / 255;
@@ -58,13 +58,13 @@ export async function removeBackground(
       break;
     } catch (error) {
       if (!(error instanceof ModelUnavailableError) || !spec.fallback) throw error;
-      unusableModels.add(spec.id);
+      unusableModels.set(spec.id, error.message);
       spec = getModelSpec(spec.fallback);
     }
   }
   if (spec.id !== requested.id) {
     ctx.onWarning?.(
-      `${requested.label} cannot run on this machine (it needs WebGPU / more memory), so ${spec.label} was used instead.`,
+      `${spec.label} was used instead of ${requested.label}. Reason: ${unusableModels.get(requested.id) ?? 'the model cannot run here.'}`,
     );
   }
   throwIfCancelled(ctx.cancel);

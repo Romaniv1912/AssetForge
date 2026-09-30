@@ -1,4 +1,6 @@
-import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
+import { useEffect, useState } from 'react';
+import { getModelSpec, SEGMENTATION_MODELS } from '../../image/background-removal/models';
+import { detectWebGpu, type WebGpuStatus } from '../lib/webgpu';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
 import { Checkbox, NumberField, Section, SelectField, Slider, TextField } from './Controls';
@@ -26,6 +28,11 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
   const resize = options.resize;
   const compression = options.compression;
   const model = SEGMENTATION_MODELS.find((m) => m.id === bg.model) ?? SEGMENTATION_MODELS[0]!;
+  const [webgpu, setWebgpu] = useState<WebGpuStatus | null>(null);
+  useEffect(() => {
+    void detectWebGpu().then(setWebgpu);
+  }, []);
+  const gpuProblem = model.requiresWebGpu && webgpu && (!webgpu.available || !webgpu.fp16);
 
   const set = <K extends keyof ProcessingOptions>(key: K, value: Partial<ProcessingOptions[K]>) =>
     update((o) => ({ ...o, [key]: { ...o[key], ...value } }));
@@ -53,6 +60,12 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
               )}
               .
             </p>
+            {model.requiresWebGpu && webgpu && (
+              <p className={gpuProblem ? 'hint hint--warning' : 'hint hint--ok'}>
+                {webgpu.detail}
+                {gpuProblem && model.fallback && ` ${getModelSpec(model.fallback).label} will be used instead.`}
+              </p>
+            )}
             {model.gated && (
               <>
                 <TextField

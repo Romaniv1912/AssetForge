@@ -2,6 +2,7 @@ import * as ortWebGpu from 'onnxruntime-web';
 import * as ortWasm from 'onnxruntime-web/wasm';
 import { fetchWithCache, OnnxSegmentationRunner, type OrtRuntime } from '../../image/background-removal/onnx-runner';
 import type { StageProgress } from '../../image/types';
+import { detectWebGpu } from '../lib/webgpu';
 
 /**
  * ONNX Runtime for the browser.
@@ -14,18 +15,9 @@ import type { StageProgress } from '../../image/types';
  */
 const ORT_CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${__ORT_VERSION__}/dist`;
 
-async function hasWebGpu(): Promise<boolean> {
-  try {
-    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-    if (!gpu) return false;
-    return (await gpu.requestAdapter()) !== null;
-  } catch {
-    return false;
-  }
-}
-
 export async function loadBrowserOrtRuntime(onProgress?: (p: StageProgress) => void): Promise<OrtRuntime> {
-  const gpu = await hasWebGpu();
+  const status = await detectWebGpu();
+  const gpu = status.available;
   const ort = (gpu ? ortWebGpu : ortWasm) as unknown as typeof ortWebGpu;
   const file = gpu ? 'ort-wasm-simd-threaded.jsep.wasm' : 'ort-wasm-simd-threaded.wasm';
   const binary = await fetchWithCache(`${ORT_CDN}/${file}`, gpu ? 28_312_028 : 14_239_897, 'ML runtime', onProgress);
@@ -37,6 +29,7 @@ export async function loadBrowserOrtRuntime(onProgress?: (p: StageProgress) => v
     ort,
     executionProviders: gpu ? ['webgpu', 'wasm'] : ['wasm'],
     label: gpu ? 'WebGPU' : 'WebAssembly (CPU)',
+    webgpuStatus: status.detail,
   };
 }
 

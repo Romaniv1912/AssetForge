@@ -135,6 +135,14 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
             metadata removed. Results replace Figma layers without any conversion.
           </p>
         )}
+        {compression.format !== 'jpeg' && compression.format !== 'avif' && compression.preset !== 'custom' && (
+          <Checkbox
+            label="Keep 256 colours"
+            hint="Palette images use a full 256-colour palette instead of the smallest one that passes — like sharp/pngquant defaults. Slightly larger, safest for gradients."
+            checked={compression.fullPalette ?? false}
+            onChange={(fullPalette) => set('compression', { fullPalette })}
+          />
+        )}
         {compression.format === 'auto' && (
           <Checkbox
             label="Consider AVIF"

@@ -4,7 +4,7 @@
   "private": true,
   "description": "AssetForge \u2014 Figma plugin for background removal, smart crop, resize and perceptual image compression.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-or-later",
   "scripts": {
     "build": "pnpm run typecheck && pnpm run build:ui && pnpm run build:plugin",
     "build:ui": "vite build --config vite.config.ui.ts",
@@ -31,6 +31,7 @@
     "@jsquash/webp": "^1.5.0",
     "fflate": "^0.8.3",
     "image-q": "^4.0.0",
+    "libimagequant-wasm": "0.3.0",
     "onnxruntime-web": "^1.30.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

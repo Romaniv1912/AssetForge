@@ -80,6 +80,12 @@ export interface CompressionOptions {
   allowAvifInAuto: boolean;
   /** Settings used when `preset` is `custom`. */
   custom: CustomCompressionSettings;
+  /**
+   * Palette formats keep a full 256-colour palette instead of searching for
+   * the smallest palette that passes (like sharp's `png({ palette: true })`).
+   * Slightly larger files, safest for gradients.
+   */
+  fullPalette?: boolean;
 }
 
 export interface ProcessingOptions {

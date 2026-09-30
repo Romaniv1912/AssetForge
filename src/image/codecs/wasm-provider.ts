@@ -21,7 +21,8 @@ export type WasmBinaryName =
   | 'avif_dec'
   | 'png'
   | 'oxipng'
-  | 'resize';
+  | 'resize'
+  | 'imagequant';
 
 export interface WasmBinaryProvider {
   load(name: WasmBinaryName): Promise<Uint8Array>;

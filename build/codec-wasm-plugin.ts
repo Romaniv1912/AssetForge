@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import type { Plugin } from 'vite';
 import { WASM_FILES } from '../src/image/codecs/wasm-files';
 
@@ -24,9 +23,8 @@ export function codecWasmPlugin(): Plugin {
     async load(id) {
       if (id !== RESOLVED_ID) return undefined;
       const entries = await Promise.all(
-        Object.entries(WASM_FILES).map(async ([name, [pkg, file]]) => {
-          const root = dirname(require.resolve(`${pkg}/package.json`));
-          const path = join(root, file);
+        Object.entries(WASM_FILES).map(async ([name, specifier]) => {
+          const path = require.resolve(specifier);
           this.addWatchFile(path);
           const bytes = await readFile(path);
           return `  ${JSON.stringify(name)}: ${JSON.stringify(bytes.toString('base64'))}`;

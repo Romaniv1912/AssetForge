@@ -103,8 +103,8 @@ Figma-independent (see below), so B or C can be added later as a
 | libavif (+ aom) | ✅ WASM, single-threaded build (`@jsquash/avif`) | ✅ AVIF |
 | oxipng | ✅ WASM (`@jsquash/oxipng`) | ✅ PNG optimisation (filters, DEFLATE, colour-type/bit-depth reduction, alpha cleanup) |
 | zopflipng | no maintained WASM build | No — oxipng's libdeflate levels get most of the gain at a fraction of the time |
-| pngquant / libimagequant | WASM ports exist, but libimagequant is **GPL-3.0** | Not bundled (licence). The `Quantizer` interface allows swapping it in |
-| image-q (MIT) | ✅ pure TS | ✅ Wu colour quantiser (palette seed) |
+| pngquant / libimagequant | ✅ WASM (`libimagequant-wasm`) | ✅ default palette quantiser — the same engine as pngquant, TinyPNG-class tools and sharp's `png({ palette: true })`. GPL-3.0, hence AssetForge's licence |
+| image-q (MIT) | ✅ pure TS | ✅ fallback quantiser (Wu palette + k-means) if libimagequant cannot load |
 | Squoosh resize | ✅ WASM (`@jsquash/resize`) | ✅ Lanczos3 / Catmull-Rom, premultiplied, linear-light |
 | ONNX Runtime Web | ✅ WASM (+ WebGPU EP) | ✅ background-removal inference |
 
@@ -292,11 +292,12 @@ PNG 773 → 116 KB (−85%), coffee PNG 456 → 136 KB (−70%), cat PNG
 
 **Encoders and strategies**
 
-- **PNG** — lossy palette path (TinyPNG-style): Wu palette (image-q) refined by
-  k-means with farthest-point seeding, remapped with serpentine
-  Floyd–Steinberg dithering whose strength fades on edges and noise and is
-  never diffused across fully transparent pixels. The palette size is searched
-  (256 → 8) against the target. Output goes through **oxipng**, which picks
+- **PNG** — lossy palette path (TinyPNG-style): **libimagequant** (pngquant's
+  engine) builds the palette and remaps with Floyd–Steinberg dithering. The
+  palette size is searched (256 → 8) against the target; with *Keep 256
+  colours* it always uses a full palette, exactly like sharp's
+  `png({ palette: true })`. If libimagequant cannot load, a built-in Wu +
+  k-means quantiser with edge-aware dithering takes over. Output goes through **oxipng**, which picks
   filters, recompresses DEFLATE and reduces colour type/bit depth (indexed +
   `tRNS` for palettes, RGB/grey when alpha is unused), clears the colour of
   fully transparent pixels, and writes no metadata. Exact-colour assets
@@ -308,7 +309,9 @@ PNG 773 → 116 KB (−85%), coffee PNG 456 → 136 KB (−70%), cat PNG
   applied on decode. A JPEG source is only re-encoded if that saves ≥ 5 %,
   otherwise the original is kept (metadata stripped, orientation-safe).
 - **WebP** — libwebp lossy (method 6 for the final encode, sharp-YUV, lossless
-  alpha plane) or lossless for graphics.
+  alpha plane), lossless for graphics, and **palette WebP**: the libimagequant
+  palette stored as *lossless* WebP (libwebp's colour-indexing transform) —
+  typically the smallest option for icons, UI art and flat illustrations.
 - **AVIF** — libavif/aom; 4:2:0 + sharp-YUV for photos, 4:4:4 for graphics,
   4:0:0 for greyscale; alpha plane encoded at higher quality than colour.
 - **Auto** — candidates depend on content (photo / illustration / flat graphic /
@@ -482,13 +485,14 @@ The following are intentionally **not implemented**, but have explicit seams:
 | Asset presets / GramZone presets | `ProcessingOptions` + `QUALITY_TARGETS` are plain data |
 | Sprite atlases, CLI, backend service | `processImage` / `processBatch` are Figma- and DOM-independent |
 | Native/remote processing (companion, server) | `ProcessingBackend` (`src/ui/processing/backend.ts`), `SegmentationRunner` |
-| Other quantisers (e.g. libimagequant) | `Quantizer` (`src/image/compression/quantize.ts`) |
+| Other quantisers | `Quantizer` (`src/image/compression/quantize.ts`) |
 | Other/self-hosted models | `registerSegmentationModel()` |
 
 ## Licences
 
-AssetForge's own licence is up to the repository owner (`package.json` is
-marked `UNLICENSED` until one is chosen). Bundled/used components: jSquash codecs
-(Apache-2.0; MozJPEG BSD-style/IJG, libwebp BSD, libavif BSD-2, aom BSD-2,
-oxipng MIT), image-q (MIT), ONNX Runtime Web (MIT), fflate (MIT), React (MIT).
-Model licences are listed in [Background removal](#background-removal).
+AssetForge is licensed under **GPL-3.0-or-later** (see `LICENSE`), because it
+bundles libimagequant, which is GPL-3.0-or-later. You may use, modify and
+redistribute it, but distributed modifications must stay open under a
+GPL-compatible licence. The default background-removal model (BRIA RMBG-1.4) is
+free for **non-commercial** use only. All third-party components and their
+licences are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

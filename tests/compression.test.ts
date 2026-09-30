@@ -4,7 +4,8 @@ import { analyzeImage } from '../src/image/analysis/analyze';
 import { optimisePngRaw } from '../src/image/codecs';
 import { compress } from '../src/image/compression/compress';
 import { QUALITY_TARGETS } from '../src/image/compression/presets';
-import { wuQuantizer } from '../src/image/compression/quantize';
+import { libimagequantQuantizer } from '../src/image/compression/libimagequant';
+import { wuQuantizer, type Quantizer } from '../src/image/compression/quantize';
 import { decodeImage } from '../src/image/decode/decode';
 import { sniffFormat } from '../src/image/decode/sniff';
 import { compareImages } from '../src/image/metrics/ssim';
@@ -28,23 +29,40 @@ async function run(image: RgbaImage, options: CompressionOptions) {
   return { out, analysis, validation };
 }
 
-describe('palette quantisation', () => {
-  it('respects the colour budget and keeps transparency', () => {
+const QUANTIZERS: Array<[string, Quantizer]> = [
+  ['libimagequant', libimagequantQuantizer],
+  ['built-in Wu + k-means', wuQuantizer],
+];
+
+describe.each(QUANTIZERS)('palette quantisation (%s)', (_name, quantizer) => {
+  it('respects the colour budget and keeps transparency', async () => {
+    await quantizer.ready?.();
     const image = transparentIllustration(200, 150);
-    const q = wuQuantizer.quantize(image, 32, { dithering: 1 });
+    const q = quantizer.quantize(image, 32, { dithering: 1 });
     const colors = new Set<number>();
     for (let p = 0; p < q.data.length; p += 4) colors.add((q.data[p]! << 24) | (q.data[p + 1]! << 16) | (q.data[p + 2]! << 8) | q.data[p + 3]!);
     expect(colors.size).toBeLessThanOrEqual(32);
     for (let p = 3; p < q.data.length; p += 4) if (image.data[p] === 0) expect(q.data[p]).toBe(0);
   });
 
-  it('dithers smooth gradients instead of banding', () => {
+  it('dithers smooth gradients instead of banding', async () => {
+    await quantizer.ready?.();
     const image = gradient(256, 64);
-    const q = wuQuantizer.quantize(image, 16, { dithering: 1 });
-    const flat = wuQuantizer.quantize(image, 16, { dithering: 0 });
+    const q = quantizer.quantize(image, 16, { dithering: 1 });
+    const flat = quantizer.quantize(image, 16, { dithering: 0 });
     const dithered = compareImages(image, q, { ditherTolerant: true });
     const banded = compareImages(image, flat, { ditherTolerant: true });
     expect(dithered.ssim).toBeGreaterThan(banded.ssim);
+  });
+});
+
+describe('libimagequant', () => {
+  it('beats the built-in quantiser on a photo at the same palette size', async () => {
+    await libimagequantQuantizer.ready!();
+    const { image } = await decodeImage(fixture('astronaut.png'));
+    const liq = compareImages(image, libimagequantQuantizer.quantize(image, 256, { dithering: 1 }), { ditherTolerant: true });
+    const wu = compareImages(image, wuQuantizer.quantize(image, 256, { dithering: 1 }), { ditherTolerant: true });
+    expect(liq.ssim).toBeGreaterThan(wu.ssim);
   });
 });
 
@@ -145,5 +163,25 @@ describe('"Same as original" (TinyPNG behaviour)', () => {
     expect(resolveOutputFormat('original', { sourceFormat: 'webp', hasAlpha: true })).toBe('webp');
     expect(resolveOutputFormat('original', { sourceFormat: 'gif', hasAlpha: false })).toBe('png');
     expect(resolveOutputFormat('avif', { sourceFormat: 'png', hasAlpha: false })).toBe('avif');
+  });
+});
+
+describe('palette WebP and full palette', () => {
+  it('measures palette → lossless WebP and it beats plain lossless WebP on an illustration', async () => {
+    const { image } = await decodeImage(fixture('logo.png'));
+    const { out } = await run(image, opts('webp'));
+    const palette = out.candidates.find((c) => c.variant === 'webp-palette');
+    expect(palette).toBeDefined();
+    expect(palette!.settings).toMatch(/Palette WebP lossless/);
+    const lossless = out.candidates.find((c) => c.variant === 'webp-lossless');
+    if (lossless) expect(palette!.bytes).toBeLessThan(lossless.bytes);
+  });
+
+  it('"Keep 256 colours" uses one full palette instead of searching', async () => {
+    const { image } = await decodeImage(fixture('coffee.png'));
+    const searched = await run(image, opts('png'));
+    const full = await run(image, opts('png', 'high', { fullPalette: true }));
+    expect(full.out.settings).toMatch(/256 colours/);
+    expect(full.out.bytes.length).toBeGreaterThanOrEqual(searched.out.bytes.length);
   });
 });

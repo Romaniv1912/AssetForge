@@ -93,7 +93,7 @@ export async function compress(input: CompressInput): Promise<CompressOutput> {
     const outcome =
       options.preset === 'custom'
         ? await runFixed(candidate, options, evaluate)
-        : await runSearch(candidate, target, evaluate, best?.bytes, analysis.uniqueColors);
+        : await runSearch(candidate, target, evaluate, best?.bytes, analysis.uniqueColors, options.fullPalette ?? false);
     if (!outcome) return;
     if (outcome.pruned) {
       onProgress?.({ stage: 'compressing', fraction: (index + 1) / total, detail: `${label(id)} cannot beat the current best` });
@@ -160,6 +160,7 @@ async function runSearch(
   evaluate: Evaluate,
   bestBytes: number | undefined,
   uniqueColors: number,
+  fullPalette: boolean,
 ): Promise<Outcome | undefined> {
   const pruneAt = bestBytes ? bestBytes * PRUNE_MARGIN : Infinity;
 
@@ -170,7 +171,8 @@ async function runSearch(
   if (candidate.kind === 'palette') {
     // Fewer colours → smaller file. Walk down until the target fails.
     let passing: Outcome | undefined;
-    for (const colors of PALETTE_STEPS) {
+    // "Keep 256 colours": one full palette, like sharp's png({ palette: true }).
+    for (const colors of fullPalette ? [256] : PALETTE_STEPS) {
       if (colors < target.minPaletteColors) break;
       // Reducing an image that already has ≤256 colours only makes sense below its count.
       if (colors >= uniqueColors) continue;
@@ -270,6 +272,7 @@ function label(id: CandidateId): string {
     avif: 'AVIF',
     'avif-lossless': 'AVIF lossless',
     'png-quant': 'PNG palette',
+    'webp-palette': 'WebP palette',
     'png-lossless': 'PNG lossless',
   }[id];
 }
@@ -323,12 +326,14 @@ export function chooseCandidates(options: CompressionOptions, analysis: ImageAna
       if (lossless) return { primary: ['png-lossless'], fallback: [] };
       if (exact) return { primary: pngQuant ? ['png-quant', 'png-lossless'] : ['png-lossless'], fallback: [] };
       return { primary: pngQuant ? ['png-quant'] : [], fallback: ['png-lossless'] };
-    case 'webp':
-      if (lossless || exact) return { primary: ['webp-lossless'], fallback: [] };
-      return {
-        primary: webpLossless ? ['webp', 'webp-lossless'] : ['webp'],
-        fallback: webpLossless ? [] : ['webp-lossless'],
-      };
+    case 'webp': {
+      if (lossless) return { primary: ['webp-lossless'], fallback: [] };
+      if (exact) return { primary: pngQuant ? ['webp-lossless', 'webp-palette'] : ['webp-lossless'], fallback: [] };
+      const primary: CandidateId[] = ['webp'];
+      if (pngQuant && (!photo || analysis.hasAlpha)) primary.push('webp-palette');
+      if (webpLossless) primary.push('webp-lossless');
+      return { primary, fallback: webpLossless ? [] : ['webp-lossless'] };
+    }
     case 'avif':
       return lossless ? { primary: ['avif-lossless'], fallback: [] } : { primary: ['avif'], fallback: [] };
     case 'jpeg': {
@@ -339,7 +344,12 @@ export function chooseCandidates(options: CompressionOptions, analysis: ImageAna
     }
     case 'auto': {
       if (lossless) return { primary: ['png-lossless', 'webp-lossless'], fallback: [] };
-      if (exact) return { primary: pngQuant ? ['png-quant', 'png-lossless', 'webp-lossless'] : ['png-lossless', 'webp-lossless'], fallback: [] };
+      if (exact) {
+        return {
+          primary: pngQuant ? ['png-quant', 'webp-palette', 'png-lossless', 'webp-lossless'] : ['png-lossless', 'webp-lossless'],
+          fallback: [],
+        };
+      }
       const avif = options.allowAvifInAuto && mp <= 16;
       const primary: CandidateId[] = [];
       if (photo && !analysis.hasAlpha) {
@@ -349,9 +359,9 @@ export function chooseCandidates(options: CompressionOptions, analysis: ImageAna
       } else if (photo) {
         primary.push('webp');
         if (avif) primary.push('avif');
-        if (pngQuant && mp <= 4) primary.push('png-quant');
+        if (pngQuant && mp <= 4) primary.push('png-quant', 'webp-palette');
       } else {
-        if (pngQuant) primary.push('png-quant');
+        if (pngQuant) primary.push('png-quant', 'webp-palette');
         primary.push('webp');
         if (webpLossless) primary.push('webp-lossless');
         if (avif) primary.push('avif');

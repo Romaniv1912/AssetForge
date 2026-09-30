@@ -26,6 +26,7 @@ export const DEFAULT_OPTIONS: ProcessingOptions = {
     format: 'original',
     preset: 'high',
     allowAvifInAuto: true,
+    fullPalette: false,
     custom: { quality: 80, lossless: false },
   },
 };

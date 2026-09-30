@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 
 const ASSET_PATTERN = /new (\w+)\((["'])([\w.-]+\.(?:wasm|mjs|js))\2,\s*import\.meta\.url\)/g;
-const PACKAGES = /[\\/]node_modules[\\/](@jsquash|onnxruntime-web)[\\/]/;
+const PACKAGES = /[\\/]node_modules[\\/](@jsquash|onnxruntime-web|libimagequant-wasm)[\\/]/;
 
 /**
  * Prepares codec glue (jSquash/Emscripten/wasm-bindgen) and ONNX Runtime for

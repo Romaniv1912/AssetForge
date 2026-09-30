@@ -10,6 +10,7 @@ import {
 } from '../codecs';
 import type { EncodableFormat, ImageAnalysis, RgbaImage } from '../types';
 import type { QualityTarget } from './presets';
+import { libimagequantQuantizer } from './libimagequant';
 import { wuQuantizer, type Quantizer } from './quantize';
 
 export type CandidateId =
@@ -21,6 +22,7 @@ export type CandidateId =
   | 'avif'
   | 'avif-lossless'
   | 'png-quant'
+  | 'webp-palette'
   | 'png-lossless';
 
 export type Phase = 'search' | 'final';
@@ -50,6 +52,31 @@ export interface CandidateContext {
   analysis: ImageAnalysis;
   target: QualityTarget;
   quantizer?: Quantizer;
+  /** Quantised pixels per palette size, shared by the PNG and WebP palette candidates. */
+  paletteCache?: Map<number, RgbaImage>;
+}
+
+let fallbackWarned = false;
+
+/**
+ * Palette-quantised pixels (libimagequant by default, image-q Wu + k-means if
+ * the libimagequant WASM cannot be loaded). Cached per palette size.
+ */
+async function quantized(ctx: CandidateContext, colors: number): Promise<RgbaImage> {
+  ctx.paletteCache ??= new Map();
+  const hit = ctx.paletteCache.get(colors);
+  if (hit) return hit;
+  let quantizer: Quantizer = ctx.quantizer ?? libimagequantQuantizer;
+  try {
+    await quantizer.ready?.();
+  } catch (error) {
+    if (!fallbackWarned) console.warn('[AssetForge] libimagequant unavailable, using the built-in quantiser:', error);
+    fallbackWarned = true;
+    quantizer = wuQuantizer;
+  }
+  const pixels = quantizer.quantize(ctx.image, colors, { dithering: ctx.target.dithering });
+  ctx.paletteCache.set(colors, pixels);
+  return pixels;
 }
 
 const megapixels = (image: RgbaImage) => (image.width * image.height) / 1e6;
@@ -164,24 +191,37 @@ export function createCandidate(id: CandidateId, ctx: CandidateContext): Candida
       };
     }
 
-    case 'png-quant': {
-      const quantizer = ctx.quantizer ?? wuQuantizer;
-      let lastColors = -1;
-      let lastPixels: RgbaImage | undefined;
+    case 'png-quant':
       return {
         id,
         format: 'png',
         kind: 'palette',
         encode: async (colors, phase) => {
-          if (colors !== lastColors || !lastPixels) {
-            lastPixels = quantizer.quantize(image, colors, { dithering: target.dithering });
-            lastColors = colors;
-          }
-          const bytes = await optimisePngRaw(lastPixels, { level: phase === 'final' ? pngLevel(mp) : 1, optimiseAlpha: true });
-          return { bytes, decoded: lastPixels };
+          const pixels = await quantized(ctx, colors);
+          const bytes = await optimisePngRaw(pixels, { level: phase === 'final' ? pngLevel(mp) : 1, optimiseAlpha: true });
+          return { bytes, decoded: pixels };
         },
         decode: decodePng,
         describe: (colors, phase) => `Quantised PNG ${colors} colours, dithered, oxipng o${phase === 'final' ? pngLevel(mp) : 1}`,
+      };
+
+    case 'webp-palette': {
+      // Palette pixels stored as lossless WebP: libwebp's colour-indexing
+      // transform makes this far smaller than lossless WebP of the full-colour
+      // image, and usually smaller than the palette PNG too.
+      const effortFor = (phase: Phase) =>
+        phase === 'search' ? { quality: 50, method: 2 } : mp <= 1 ? { quality: 100, method: 6 } : { quality: 80, method: 5 };
+      return {
+        id,
+        format: 'webp',
+        kind: 'palette',
+        encode: async (colors, phase) => {
+          const pixels = await quantized(ctx, colors);
+          const bytes = await encodeWebp(pixels, { lossless: 1, exact: 0, ...effortFor(phase) });
+          return { bytes, decoded: pixels };
+        },
+        decode: decodeWebp,
+        describe: (colors, phase) => `Palette WebP lossless ${colors} colours, dithered, z${effortFor(phase).method}`,
       };
     }
 

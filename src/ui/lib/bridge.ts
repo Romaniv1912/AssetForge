@@ -10,8 +10,9 @@ export function postToPlugin(message: UiToPluginMessage, transfer?: Transferable
 type Listener = (message: PluginToUiMessage) => void;
 const listeners = new Set<Listener>();
 
+// No `event.source` check: Figma nests the plugin UI in several frames, so
+// plugin messages do not necessarily come from `window.parent`.
 window.addEventListener('message', (event: MessageEvent) => {
-  if (event.source !== window.parent) return;
   const message = (event.data as { pluginMessage?: unknown } | null)?.pluginMessage;
   if (!isPluginToUiMessage(message)) return;
   for (const listener of listeners) listener(message);

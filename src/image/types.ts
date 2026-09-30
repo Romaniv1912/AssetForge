@@ -46,6 +46,11 @@ export interface BackgroundRemovalOptions {
   refineEdges: boolean;
   /** Re-estimate foreground colours in soft edges to avoid halos. */
   decontaminateColors: boolean;
+  /**
+   * Hugging Face access token (read scope) for gated models such as RMBG-2.0.
+   * Only sent to huggingface.co when downloading such a model.
+   */
+  huggingFaceToken?: string;
 }
 
 export interface CropOptions {

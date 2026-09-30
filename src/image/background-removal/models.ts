@@ -46,6 +46,8 @@ export interface SegmentationModelSpec {
   requiresWebGpu?: boolean;
   /** Model used instead when this one cannot run (no WebGPU, out of memory). */
   fallback?: string;
+  /** Download needs a Hugging Face token (gated repository). */
+  gated?: { acceptUrl: string };
 }
 
 const registry: SegmentationModelSpec[] = [
@@ -79,6 +81,26 @@ const registry: SegmentationModelSpec[] = [
     outputNormalization: 'minmax',
     performanceNote: '≈176 MB download (cached), about twice as slow as the 8-bit version, works without a GPU.',
     fallback: 'rmbg-1.4',
+  },
+  {
+    id: 'rmbg-2.0',
+    label: 'RMBG-2.0 (best quality, WebGPU)',
+    description:
+      'BRIA RMBG-2.0: BiRefNet architecture trained on BRIA\'s licensed data — the strongest open model for hair, fur and fine edges.',
+    url: 'https://huggingface.co/briaai/RMBG-2.0/resolve/main/onnx/model_fp16.onnx',
+    approxBytes: 514_000_000,
+    performanceNote:
+      'Needs WebGPU and ≈514 MB download (cached). Gated on Hugging Face: accept the licence and add a read token below.',
+    license: 'CC BY-NC 4.0 (non-commercial)',
+    licenseUrl: 'https://huggingface.co/briaai/RMBG-2.0',
+    commercialUse: 'requires-agreement',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+    outputNormalization: 'auto',
+    requiresWebGpu: true,
+    fallback: 'rmbg-1.4',
+    gated: { acceptUrl: 'https://huggingface.co/briaai/RMBG-2.0' },
   },
 ];
 

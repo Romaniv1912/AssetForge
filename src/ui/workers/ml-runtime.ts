@@ -36,6 +36,7 @@ export async function loadBrowserOrtRuntime(onProgress?: (p: StageProgress) => v
 export function createBrowserSegmentationRunner(): OnnxSegmentationRunner {
   return new OnnxSegmentationRunner({
     loadRuntime: loadBrowserOrtRuntime,
-    loadModel: (url, approxBytes, onProgress) => fetchWithCache(url, approxBytes, 'background model', onProgress),
+    loadModel: (url, approxBytes, onProgress, access) =>
+      fetchWithCache(url, approxBytes, 'background model', onProgress, 'removing-background', access),
   });
 }

@@ -47,7 +47,7 @@ describe('background removal', () => {
     expect(full.url).toMatch(/onnx\/model\.onnx$/);
     expect(full.requiresWebGpu).toBeFalsy();
     expect(DEFAULT_SEGMENTATION_MODEL).toBe('rmbg-1.4');
-    expect(SEGMENTATION_MODELS.map((m) => m.id)).toEqual(['rmbg-1.4', 'rmbg-1.4-full']);
+    expect(SEGMENTATION_MODELS.map((m) => m.id)).toEqual(['rmbg-1.4', 'rmbg-1.4-full', 'rmbg-2.0']);
   });
 
   it('normalises input tensors and model outputs', () => {

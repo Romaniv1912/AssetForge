@@ -1,4 +1,4 @@
-import { ModelUnavailableError, type SegmentationMask, type SegmentationRunner } from '../../image/background-removal/runner';
+import { ModelUnavailableError, type ModelAccess, type SegmentationMask, type SegmentationRunner } from '../../image/background-removal/runner';
 import type { StageProgress } from '../../image/types';
 import type { SegmentationRequest, SegmentationResponse } from '../../shared/messages/worker';
 
@@ -38,11 +38,20 @@ export class RemoteSegmentationRunner implements SegmentationRunner {
     width: number,
     height: number,
     onProgress?: (p: StageProgress) => void,
+    access?: ModelAccess,
   ): Promise<SegmentationMask> {
     const requestId = `seg-${++this.next}`;
     return new Promise((resolve, reject) => {
       this.pending.set(requestId, { resolve, reject, onProgress });
-      const request: SegmentationRequest = { type: 'SEGMENT', requestId, modelId, tensor, width, height };
+      const request: SegmentationRequest = {
+        type: 'SEGMENT',
+        requestId,
+        modelId,
+        tensor,
+        width,
+        height,
+        huggingFaceToken: access?.huggingFaceToken,
+      };
       this.port.postMessage(request, [tensor.buffer]);
     });
   }

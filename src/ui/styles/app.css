@@ -376,6 +376,15 @@ strong {
   text-align: left;
 }
 
+.selection__actions {
+  display: flex;
+  margin: 2px -8px 0;
+}
+
+.selection__actions .button {
+  gap: 6px;
+}
+
 button.selection__row {
   margin: 0 -8px;
   padding: 0 8px;

@@ -359,6 +359,12 @@ Downloads keep the chosen format. Replacements keep the paint's other
 properties, can resize the layer to the new aspect ratio, and record the
 original image hash in plugin data.
 
+**Download originals.** On the Settings tab, "Download original(s)" saves
+the selected images exactly as Figma stores them: the uploaded file at full
+size, without the crop, compression or re-encoding. Several images come as
+one ZIP (stored without re-compression), an image used by several layers is
+saved once, and unreadable images are skipped with a notice.
+
 **Cropped images.** A fill cropped with Figma's crop tool (scale mode *Crop*)
 is processed from its visible region only: e.g. from a 2000 px image cropped
 to 1200×800, just those 1200×800 px are cut out, background-removed and

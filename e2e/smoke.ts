@@ -86,6 +86,14 @@ async function main() {
   await frame.getByText('Selected images').waitFor();
   assert((await frame.locator('.selection__value').first().textContent())?.trim() === '5', 'five images detected');
   await frame.getByText(/cropped\s+in Figma/).waitFor();
+  // Originals are downloaded byte-for-byte (one per unique image hash).
+  const [originals] = await Promise.all([page.waitForEvent('download'), frame.getByRole('button', { name: 'Download originals' }).click()]);
+  assert(originals.suggestedFilename() === 'assetforge-originals.zip', 'originals downloaded as a ZIP');
+  const { unzipSync } = await import('fflate');
+  const zip = unzipSync(new Uint8Array(readFileSync((await originals.path())!)));
+  const catFile = Object.entries(zip).find(([name]) => name.startsWith('cropped-cat') || name.startsWith('cat-photo'));
+  assert(Object.keys(zip).length === 3, `three unique originals (missing one fails): ${Object.keys(zip).join(', ')}`);
+  assert(catFile && Buffer.from(catFile[1]).equals(readFileSync(`${root}fixtures/images/chelsea.png`)), 'original bytes are unchanged');
   await frame.getByText('Unsupported nodes').click();
   await frame.getByText('Text without an image fill').waitFor();
   await page.screenshot({ path: `${shots}01-settings.png` });

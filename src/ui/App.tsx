@@ -13,6 +13,7 @@ import { useBackend } from './hooks/useBackend';
 import { useBatch, type BatchItem } from './hooks/useBatch';
 import { usePlugin } from './hooks/usePlugin';
 import { postToPlugin } from './lib/bridge';
+import { downloadOriginals } from './outputs/originals';
 import { DownloadSink, ZipDownloadSink, type OutputAsset } from './outputs/sinks';
 
 type Tab = 'settings' | 'results';
@@ -49,6 +50,23 @@ export function App() {
     void sink.deliver(assets).catch((e: unknown) => postToPlugin({ type: 'NOTIFY', message: `Download failed: ${String(e)}`, error: true }));
   };
 
+  const [downloadingOriginals, setDownloadingOriginals] = useState(false);
+  const saveOriginals = async () => {
+    setDownloadingOriginals(true);
+    setBusy('Reading original files from Figma…');
+    try {
+      const { failed } = await downloadOriginals(selection.images, (done, total) =>
+        setBusy(`Reading original files from Figma… ${done}/${total}`),
+      );
+      if (failed.length) postToPlugin({ type: 'NOTIFY', message: `Skipped ${failed.length}: ${failed.join('; ')}`, error: true });
+    } catch (e: unknown) {
+      postToPlugin({ type: 'NOTIFY', message: `Download failed: ${e instanceof Error ? e.message : String(e)}`, error: true });
+    } finally {
+      setBusy(null);
+      setDownloadingOriginals(false);
+    }
+  };
+
   const applyAll = async (mode: ApplyMode) => {
     setBusy(mode === 'replace' ? 'Replacing images in Figma…' : 'Inserting optimized layers…');
     try {
@@ -78,7 +96,7 @@ export function App() {
       <main className="app__body">
         {tab === 'settings' ? (
           <>
-            <SelectionSummary selection={selection} />
+            <SelectionSummary selection={selection} onDownloadOriginals={() => void saveOriginals()} downloading={downloadingOriginals} />
             <SettingsPanel options={options} update={update} disabled={state.running || !ready} />
           </>
         ) : state.items.length === 0 ? (

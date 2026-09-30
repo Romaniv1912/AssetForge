@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import type { SelectionSnapshot } from '../../shared/types';
 import { postToPlugin } from '../lib/bridge';
-import { IconAlert, IconChevron } from './Icons';
+import { IconAlert, IconChevron, IconDownload } from './Icons';
 
-export function SelectionSummary({ selection }: { selection: SelectionSnapshot }) {
+export function SelectionSummary({
+  selection,
+  onDownloadOriginals,
+  downloading,
+}: {
+  selection: SelectionSnapshot;
+  onDownloadOriginals?: () => void;
+  downloading?: boolean;
+}) {
   const [showUnsupported, setShowUnsupported] = useState(false);
   const images = selection.images.length;
   const fills = selection.images.reduce((n, i) => n + i.targets.length, 0);
@@ -20,6 +28,19 @@ export function SelectionSummary({ selection }: { selection: SelectionSnapshot }
       {fills > images && (
         <div className="selection__note">
           {fills} image fills share {images} unique image{images === 1 ? '' : 's'} — each is processed once.
+        </div>
+      )}
+      {images > 0 && onDownloadOriginals && (
+        <div className="selection__actions">
+          <button
+            type="button"
+            className="button button--ghost"
+            disabled={downloading}
+            onClick={onDownloadOriginals}
+            title="Download the files exactly as stored in Figma: full size, no crop, no compression"
+          >
+            <IconDownload /> {downloading ? 'Downloading…' : images === 1 ? 'Download original' : 'Download originals'}
+          </button>
         </div>
       )}
       {cropped.length > 0 && (

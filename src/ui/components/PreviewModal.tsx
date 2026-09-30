@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { pixelRect } from '../../image/crop/smart-crop';
 import { MIME_TYPES, sniffFormat } from '../../image/decode/sniff';
+import type { NormalizedRect } from '../../image/types';
 import { UI_SIZE, UI_SIZE_EXPANDED } from '../../shared/constants';
 import type { BatchItem } from '../hooks/useBatch';
 import { postToPlugin, requestImageBytes } from '../lib/bridge';
@@ -49,11 +51,18 @@ export function PreviewModal(props: {
     let cancelled = false;
     setOriginal(null);
     setOriginalError(null);
-    requestImageBytes(item.id)
+    const crop = item.source.crop;
+    requestImageBytes(item.source.hash)
       .then(async (bytes) => {
         if (cancelled) return;
         const format = sniffFormat(bytes);
-        url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: MIME_TYPES[format] }));
+        const fileUrl = URL.createObjectURL(new Blob([bytes as BlobPart], { type: MIME_TYPES[format] }));
+        url = fileUrl;
+        // A cropped fill was processed from its visible part: compare against that part.
+        if (crop) {
+          url = await cropToUrl(fileUrl, crop);
+          URL.revokeObjectURL(fileUrl);
+        }
         const size = await imageSize(url);
         if (cancelled) return URL.revokeObjectURL(url);
         setOriginal({ url, bytes: bytes.length, format, ...size });
@@ -63,7 +72,7 @@ export function PreviewModal(props: {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [item.id]);
+  }, [item.id, item.source.hash, item.source.crop]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -351,4 +360,20 @@ function imageSize(url: string): Promise<{ width: number; height: number }> {
     img.onerror = () => reject(new Error('The original image could not be displayed'));
     img.src = url;
   });
+}
+
+async function cropToUrl(url: string, crop: NormalizedRect): Promise<string> {
+  const img = new Image();
+  img.src = url;
+  await img.decode().catch(() => {
+    throw new Error('The original image could not be displayed');
+  });
+  const rect = pixelRect(crop, img.naturalWidth, img.naturalHeight);
+  const canvas = document.createElement('canvas');
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  canvas.getContext('2d')!.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('The original image could not be displayed');
+  return URL.createObjectURL(blob);
 }

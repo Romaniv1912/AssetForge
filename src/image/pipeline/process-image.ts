@@ -4,7 +4,7 @@ import type { SegmentationRunner } from '../background-removal/runner';
 import { optimisePngFile, optimisePngRaw } from '../codecs';
 import { compress } from '../compression/compress';
 import type { Quantizer } from '../compression/quantize';
-import { cropImage, findContentBounds, padImage } from '../crop/smart-crop';
+import { cropImage, findContentBounds, padImage, pixelRect } from '../crop/smart-crop';
 import { decodeImage, type FallbackDecoder } from '../decode/decode';
 import { detectColorProfile, stripJpegMetadata, stripPngMetadata } from '../decode/metadata';
 import { MIME_TYPES } from '../decode/sniff';
@@ -243,15 +243,6 @@ export async function processImage(
     timings,
     warnings,
   };
-}
-
-/** Converts a fractional region to whole pixels inside the image (at least 1×1). */
-export function pixelRect(rect: NormalizedRect, width: number, height: number) {
-  const x0 = Math.min(width - 1, Math.max(0, Math.round(rect.x * width)));
-  const y0 = Math.min(height - 1, Math.max(0, Math.round(rect.y * height)));
-  const x1 = Math.min(width, Math.max(x0 + 1, Math.round((rect.x + rect.width) * width)));
-  const y1 = Math.min(height, Math.max(y0 + 1, Math.round((rect.y + rect.height) * height)));
-  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 async function passThrough(bytes: Uint8Array, format: EncodableFormat): Promise<Uint8Array> {

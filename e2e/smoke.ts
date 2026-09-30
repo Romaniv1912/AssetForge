@@ -84,17 +84,18 @@ async function main() {
   const frame = await waitForFrame(page.frames.bind(page));
 
   await frame.getByText('Selected images').waitFor();
-  assert((await frame.locator('.selection__value').first().textContent())?.trim() === '4', 'four images detected');
+  assert((await frame.locator('.selection__value').first().textContent())?.trim() === '5', 'five images detected');
+  await frame.getByText(/cropped\s+in Figma/).waitFor();
   await frame.getByText('Unsupported nodes').click();
   await frame.getByText('Text without an image fill').waitFor();
   await page.screenshot({ path: `${shots}01-settings.png` });
 
-  const processButton = frame.getByRole('button', { name: /Process 4 images/ });
+  const processButton = frame.getByRole('button', { name: /Process 5 images/ });
   await processButton.waitFor();
   await frame.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.button--primary')?.disabled);
   const started = Date.now();
   await processButton.click();
-  await frame.getByText(/Processing \d+ \/ 4/).waitFor({ timeout: 30_000 });
+  await frame.getByText(/Processing \d+ \/ 5/).waitFor({ timeout: 30_000 });
   await page.screenshot({ path: `${shots}02-processing.png` });
   await frame.getByRole('button', { name: /Replace in Figma/ }).waitFor({ timeout: 300_000 });
   console.log(`Batch finished in ${((Date.now() - started) / 1000).toFixed(1)} s`);
@@ -102,7 +103,7 @@ async function main() {
   if (process.env.E2E_DEBUG) await page.waitForTimeout(20_000);
   const statuses = await frame.locator('.status').allTextContents();
   console.log('Statuses:', statuses.join(', '));
-  assert(statuses.filter((s) => s === 'Completed').length === 3, 'three images completed');
+  assert(statuses.filter((s) => s === 'Completed').length === 4, 'four images completed');
   assert(statuses.filter((s) => s === 'Failed').length === 1, 'the broken image failed without stopping the batch');
   await frame.getByText('Image not found in this file').waitFor();
   const saved = await frame.locator('.summary__grid dd').nth(2).textContent();
@@ -123,7 +124,9 @@ async function main() {
   await frame.getByText('Replaced').first().waitFor({ timeout: 60_000 });
   const applied = (await page.evaluate(() => (window as unknown as { __applied: unknown[] }).__applied)) as Array<{ magic: number[]; mode: string }>;
   console.log('Applied:', JSON.stringify(applied));
-  assert(applied.length === 3, 'three images applied');
+  assert(applied.length === 4, 'four images applied');
+  const cropped = (applied as unknown as Array<{ imageId: string; width: number; height: number }>).find((a) => a.imageId.startsWith('hash-chelsea@'));
+  assert(cropped && cropped.width === 225 && cropped.height === 300, 'cropped fill is processed from its visible part');
   for (const item of applied) {
     const png = item.magic[0] === 0x89 && item.magic[1] === 0x50;
     const jpeg = item.magic[0] === 0xff && item.magic[1] === 0xd8;
@@ -140,11 +143,11 @@ async function main() {
   await frame.getByLabel('Model').selectOption('rmbg-1.4-full');
   await frame.locator('.app__body').evaluate((el) => el.scrollTo(0, 200));
   await page.screenshot({ path: `${shots}00-settings-rmbg2.png` });
-  await frame.getByRole('button', { name: /Process 4 images/ }).click();
+  await frame.getByRole('button', { name: /Process 5 images/ }).click();
   await frame.getByRole('button', { name: /Replace in Figma/ }).waitFor({ timeout: 300_000 });
   const statusesBg = await frame.locator('.status').allTextContents();
   console.log('Statuses (background removal):', statusesBg.join(', '), '| downloads:', JSON.stringify(hits));
-  assert(statusesBg.filter((s) => s === 'Completed').length === 3, 'three images completed with background removal');
+  assert(statusesBg.filter((s) => s === 'Completed').length === 4, 'four images completed with background removal');
   assert(hits.model === 1, 'model downloaded exactly once for the whole batch');
   assert(hits.runtime >= 1, 'ONNX Runtime binary fetched');
   await frame.locator('.result__thumb').first().click();

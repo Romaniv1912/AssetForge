@@ -1,4 +1,4 @@
-import type { RgbaImage } from '../types';
+import type { NormalizedRect, RgbaImage } from '../types';
 
 export interface Rect {
   x: number;
@@ -72,4 +72,13 @@ export function padImage(image: RgbaImage, padding: number): RgbaImage {
     out.set(image.data.subarray(y * rowBytes, (y + 1) * rowBytes), ((y + p) * width + p) * 4);
   }
   return { width, height, data: out };
+}
+
+/** Converts a fractional region to whole pixels inside the image (at least 1×1). */
+export function pixelRect(rect: NormalizedRect, width: number, height: number): Rect {
+  const x0 = Math.min(width - 1, Math.max(0, Math.round(rect.x * width)));
+  const y0 = Math.min(height - 1, Math.max(0, Math.round(rect.y * height)));
+  const x1 = Math.min(width, Math.max(x0 + 1, Math.round((rect.x + rect.width) * width)));
+  const y1 = Math.min(height, Math.max(y0 + 1, Math.round((rect.y + rect.height) * height)));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }

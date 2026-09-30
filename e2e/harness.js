@@ -12,8 +12,21 @@ const images = {
 
 const send = (msg) => frame.contentWindow.postMessage({ pluginMessage: msg }, '*');
 
+// First entry: the cat photo shown through a crop (left and right quarters hidden).
+const croppedCat = {
+  id: 'hash-chelsea@0.2500,0.0000,0.5000,1.0000',
+  hash: 'hash-chelsea',
+  crop: { x: 0.25, y: 0, width: 0.5, height: 1 },
+  name: 'Cropped cat',
+  width: 225,
+  height: 300,
+  fullWidth: 451,
+  fullHeight: 300,
+  targets: [{ nodeId: '1:9', nodeName: 'Cropped cat', nodeType: 'RECTANGLE', fillIndex: 0, nodeWidth: 225, nodeHeight: 300 }],
+};
+
 const selection = {
-  images: Object.entries(images).map(([id, img], i) => ({
+  images: [croppedCat, ...Object.entries(images).map(([id, img], i) => ({
     id,
     hash: id,
     crop: null,
@@ -23,7 +36,7 @@ const selection = {
     fullWidth: img.width,
     fullHeight: img.height,
     targets: [{ nodeId: `1:${i + 1}`, nodeName: img.name, nodeType: 'RECTANGLE', fillIndex: 0, nodeWidth: img.width, nodeHeight: img.height }],
-  })),
+  }))],
   unsupported: [{ nodeId: '9:1', nodeName: 'Heading', nodeType: 'TEXT', reason: 'Text without an image fill' }],
   truncated: false,
   scannedNodes: 6,

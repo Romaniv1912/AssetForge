@@ -38,6 +38,37 @@ In Figma: **Plugins → Development → Import plugin from manifest…** and pic
 `manifest.json`. Select layers with image fills (or frames/groups that contain
 them) and run **AssetForge**.
 
+### Hosted UI (GitHub Pages)
+
+Inside Figma the bundled UI runs in an opaque-origin, non-secure iframe: no
+Cache Storage, no IndexedDB, no WebGPU. So on every launch the model would be
+downloaded again, and large models could not run at all. To avoid that, the
+bundled UI checks `https://romaniv1912.github.io/ImageKit/version.json` at
+startup (≤ 2.5 s). If the check succeeds and the message-protocol version
+matches, the UI navigates to that identical hosted copy (Figma's "non-null
+origin" UI) and forwards Figma's theme tokens. There:
+
+- the ONNX runtime and models are stored in Cache Storage and load from disk on
+  later launches;
+- WebGPU is available, so large models such as BiRefNet run.
+
+If the hosted copy is unreachable (offline, not deployed yet) or has a
+different protocol version, the bundled UI keeps running as before.
+
+- **Deploy:** `.github/workflows/pages.yml` builds the UI and publishes it on
+  every push to `main`. One-time setup: *Settings → Pages → Build and
+  deployment → Source: GitHub Actions*.
+- **Fork or custom host:** build with
+  `ASSETFORGE_REMOTE_UI=https://you.github.io/repo/`, and add that origin to
+  `manifest.json → networkAccess.allowedDomains`.
+- **Always run bundled:** build with `ASSETFORGE_REMOTE_UI=off`.
+- **Breaking message-protocol change:** bump `PROTOCOL_VERSION` in
+  `src/shared/constants`. Older installed plugins then keep using their bundled
+  UI instead of a hosted UI they cannot talk to.
+- **Live theme switching:** switching the Figma theme while the plugin is open
+  applies after reopening the plugin, because the hosted page receives the
+  theme once at startup.
+
 > `manifest.json` contains a placeholder `id`. Figma assigns the real id when you
 > create the plugin in your account — replace it before publishing.
 
@@ -75,7 +106,7 @@ an opaque `null` origin).
 | WebGPU / WebGL | ❌ | WebGL ✅; WebGPU is feature-detected (`navigator.gpu.requestAdapter()`), with automatic CPU fallback |
 | Relative file fetches | — | ❌ (opaque origin) → the UI must be **one HTML file**; codec binaries are embedded |
 | Network | — | Only hosts listed in `manifest.json → networkAccess.allowedDomains` |
-| Persistent storage | `figma.clientStorage` (small; used for settings) | IndexedDB/Cache Storage are unreliable in opaque origins → model/runtime downloads rely on the browser HTTP cache (Cache Storage is used when available) |
+| Persistent storage | `figma.clientStorage` (small; used for settings) | IndexedDB/Cache Storage are unavailable in the opaque-origin UI → the UI moves to its hosted copy (GitHub Pages), where Cache Storage keeps models across launches |
 | Native Node modules (Sharp, libvips) | ❌ not Node | ❌ a browser |
 | Image API | `figma.createImage` accepts **PNG, JPEG, GIF** only; `image.getBytesAsync()` returns the original file bytes | — |
 
@@ -209,17 +240,17 @@ dedicated worker. Nothing is uploaded.
 | --- | --- | --- | --- |
 | `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net, 8-bit | ≈ 44 MB | fast, works on any machine | bria-rmbg-1.4, non-commercial |
 | `rmbg-1.4-full` — same model, full precision (fp32) | ≈ 176 MB | cleaner edges and fewer mistakes, ~2× slower | bria-rmbg-1.4, non-commercial |
+| `birefnet-lite` — BiRefNet lite (Swin-T), fp32 | ≈ 224 MB | best edges (hair, fur, thin parts); **WebGPU only**, falls back to RMBG-1.4 without it | MIT |
 
 AssetForge is an open, non-commercial project, so the non-commercial RMBG
 licence is fine here.
 
-**Why not RMBG-2.0 / BiRefNet?** They are stronger, but 1024² transformer
-models need WebGPU: on the WebAssembly CPU backend their activations exceed the
-4 GB heap (`OrtRun() … std::bad_alloc`). Figma creates the plugin window as a
-non-secure context, where browsers do not expose WebGPU, so these models cannot
-run inside the Figma plugin. The registry still supports WebGPU-only models
-(`requiresWebGpu`) with an automatic `fallback`, so they can be re-added via
-`registerSegmentationModel()` if the UI is ever served from an https origin.
+**WebGPU-only models.** 1024² transformer models such as BiRefNet need WebGPU:
+on the WebAssembly CPU backend their activations exceed the 4 GB heap
+(`OrtRun() … std::bad_alloc`). The bundled plugin window is a non-secure
+context without WebGPU, so these models only run in the hosted UI (see
+*Hosted UI* above). Elsewhere they fall back to RMBG-1.4 automatically, and the
+UI shows a warning when that happens.
 
 How it works:
 
@@ -228,8 +259,9 @@ How it works:
    `onnxruntime-web` version; 14 MB CPU build, or 28 MB when WebGPU is available)
    and the model from Hugging Face, with byte-level progress in the UI. One
    session serves the entire batch; the model is never reloaded per image.
-   Downloads are served from the HTTP cache afterwards (and from Cache Storage
-   where the browser allows it).
+   In the hosted UI, downloads are stored in Cache Storage and load from disk on
+   later launches. The bundled UI cannot store them, so it downloads them once
+   per plugin session.
 2. **Inference** at the model's native resolution (1024²), WebGPU when an
    adapter exists, WASM SIMD otherwise.
 3. **Edge refinement** — a colour *Fast Guided Filter* (He & Sun, 2015): the
@@ -477,8 +509,8 @@ worker (CDN downloads are routed to local files). Screenshots are saved to
 - The UI bundle is ≈ 10 MB because the codec binaries are embedded (so
   compression works offline); the ML runtime and model are downloaded on
   first use instead.
-- WebGPU availability depends on the Figma client; the CPU path is always
-  available.
+- WebGPU (and persistent model caching) needs the hosted UI; the bundled UI
+  always has the CPU path.
 
 ## Extending AssetForge
 

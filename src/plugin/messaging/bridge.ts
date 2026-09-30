@@ -1,7 +1,8 @@
 import { isUiToPluginMessage, type PluginToUiMessage, type UiToPluginMessage } from '../../shared/messages';
 
 export function postToUi(message: PluginToUiMessage): void {
-  figma.ui.postMessage(message);
+  // origin '*': the UI may have navigated to the hosted (GitHub Pages) copy.
+  figma.ui.postMessage(message, { origin: '*' });
 }
 
 type Handlers = {

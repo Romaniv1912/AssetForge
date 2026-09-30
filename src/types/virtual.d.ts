@@ -7,3 +7,5 @@ declare module 'virtual:assetforge-codec-wasm' {
 /** onnxruntime-web version, injected at build time (pins the CDN runtime binary). */
 declare const __ORT_VERSION__: string;
 declare const __APP_VERSION__: string;
+/** Where the hosted UI lives (GitHub Pages); empty when the build disables it. */
+declare const __REMOTE_UI_URL__: string;

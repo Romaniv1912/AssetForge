@@ -2,6 +2,12 @@ import type { ProcessingOptions } from '../../image/types';
 
 export const PLUGIN_NAME = 'AssetForge';
 
+/**
+ * Version of the UI ⇄ main-thread message protocol. The hosted UI is only used
+ * when its protocol matches the installed plugin; bump on breaking changes.
+ */
+export const PROTOCOL_VERSION = 1;
+
 export const UI_SIZE = { width: 380, height: 680 } as const;
 export const UI_SIZE_EXPANDED = { width: 760, height: 680 } as const;
 

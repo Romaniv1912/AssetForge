@@ -3,13 +3,15 @@ import type { ApplyItem, ApplyMode, ApplyOutcome } from '../../shared/types';
 
 /** Typed wrapper around the Figma UI ⇄ main-thread postMessage channel. */
 export function postToPlugin(message: UiToPluginMessage, transfer?: Transferable[]): void {
-  parent.postMessage({ pluginMessage: message }, '*', transfer);
+  // `pluginId` is required once the UI runs from its hosted (non-null) origin.
+  parent.postMessage({ pluginMessage: message, pluginId: '*' }, '*', transfer);
 }
 
 type Listener = (message: PluginToUiMessage) => void;
 const listeners = new Set<Listener>();
 
 window.addEventListener('message', (event: MessageEvent) => {
+  if (event.source !== window.parent) return;
   const message = (event.data as { pluginMessage?: unknown } | null)?.pluginMessage;
   if (!isPluginToUiMessage(message)) return;
   for (const listener of listeners) listener(message);

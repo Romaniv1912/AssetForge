@@ -47,7 +47,10 @@ describe('background removal', () => {
     expect(full.url).toMatch(/onnx\/model\.onnx$/);
     expect(full.requiresWebGpu).toBeFalsy();
     expect(DEFAULT_SEGMENTATION_MODEL).toBe('rmbg-1.4');
-    expect(SEGMENTATION_MODELS.map((m) => m.id)).toEqual(['rmbg-1.4', 'rmbg-1.4-full']);
+    const birefnet = getModelSpec('birefnet-lite');
+    expect(birefnet.requiresWebGpu).toBe(true);
+    expect(birefnet.fallback).toBe('rmbg-1.4');
+    expect(SEGMENTATION_MODELS.map((m) => m.id)).toEqual(['rmbg-1.4', 'rmbg-1.4-full', 'birefnet-lite']);
   });
 
   it('normalises input tensors and model outputs', () => {

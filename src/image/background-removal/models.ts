@@ -80,6 +80,25 @@ const registry: SegmentationModelSpec[] = [
     performanceNote: '≈176 MB download (cached), about twice as slow as the 8-bit version, works without a GPU.',
     fallback: 'rmbg-1.4',
   },
+  {
+    id: 'birefnet-lite',
+    label: 'BiRefNet lite (best edges, WebGPU)',
+    description:
+      'BiRefNet lite (Swin-T, 1024²) in full precision: very clean edges and fine detail (hair, fur, thin structures). MIT licensed.',
+    url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx',
+    approxBytes: 224_000_000,
+    performanceNote:
+      'Needs WebGPU (available when the plugin runs from GitHub Pages). ≈224 MB download, cached after the first run.',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
+    commercialUse: 'allowed',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+    outputNormalization: 'sigmoid',
+    requiresWebGpu: true,
+    fallback: 'rmbg-1.4',
+  },
 ];
 
 /** Live view of the registry (includes models added with `registerSegmentationModel`). */

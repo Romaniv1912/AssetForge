@@ -122,7 +122,7 @@ export function App() {
                 Insert copies
               </button>
               <button type="button" className="button button--secondary" onClick={() => download(completed)}>
-                {completed.length === 1 ? 'Download' : `Download all (.zip)`}
+                {completed.length === 1 ? 'Download' : 'Download ZIP'}
               </button>
             </div>
           </div>

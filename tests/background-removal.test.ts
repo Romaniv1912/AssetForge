@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import './helpers/setup';
-import { getModelSpec, modelInputSize, SEGMENTATION_MODELS } from '../src/image/background-removal/models';
+import { DEFAULT_SEGMENTATION_MODEL, getModelSpec, modelInputSize, SEGMENTATION_MODELS } from '../src/image/background-removal/models';
 import { normalizeMask, removeBackground, toTensor } from '../src/image/background-removal/remove-background';
 import { bilinearResize, boxBlur } from '../src/image/background-removal/refine';
-import type { SegmentationRunner } from '../src/image/background-removal/runner';
+import { ModelUnavailableError, type SegmentationRunner } from '../src/image/background-removal/runner';
 import { processImage } from '../src/image/pipeline/process-image';
 import { encodePng } from '../src/image/codecs';
 import { fixture, options } from './helpers/setup';
@@ -47,7 +47,12 @@ describe('background removal', () => {
     expect(birefnet.commercialUse).toBe('allowed');
     expect(birefnet.outputNormalization).toBe('sigmoid');
     expect(birefnet.mean).toEqual([0.485, 0.456, 0.406]);
-    expect(birefnet.webgpu?.url).toMatch(/fp16\.onnx$/);
+    expect(birefnet.requiresWebGpu).toBe(true);
+    expect(birefnet.fallback).toBe('rmbg-1.4');
+    const rmbg2 = getModelSpec('rmbg-2.0');
+    expect(rmbg2.gated?.acceptUrl).toMatch(/briaai\/RMBG-2\.0/);
+    expect(rmbg2.requiresWebGpu).toBe(true);
+    expect(DEFAULT_SEGMENTATION_MODEL).toBe('rmbg-1.4');
     const modnet = modelInputSize(getModelSpec('modnet'), 3000, 2000);
     expect(modnet.height).toBe(512);
     expect(modnet.width % 32).toBe(0);
@@ -63,6 +68,9 @@ describe('background removal', () => {
     expect(sig[0]).toBeLessThan(1e-6);
     expect(sig[1]).toBeCloseTo(0.5, 6);
     expect(sig[2]).toBeGreaterThan(1 - 1e-6);
+    // auto: logits get a sigmoid, an already-activated matte is kept.
+    expect(normalizeMask(Float32Array.of(-8, 8), { outputNormalization: 'auto' })[0]).toBeLessThan(0.001);
+    expect(Array.from(normalizeMask(Float32Array.of(0, 0.25, 1), { outputNormalization: 'auto' }))).toEqual([0, 0.25, 1]);
   });
 
   it('produces a soft matte that follows the true object edge', async () => {
@@ -164,5 +172,26 @@ describe('background removal', () => {
     expect(result.backgroundRemoved).toBe(true);
     expect(result.analysis.alphaKind).toBe('soft');
     await runner.dispose();
+  });
+
+  it('falls back to RMBG-1.4 when a model cannot run (no WebGPU / out of memory) and remembers it', async () => {
+    const { image, alpha } = objectOnBackground(160, 120);
+    const bytes = await encodePng(image);
+    const calls: string[] = [];
+    const truth = groundTruthRunner(alpha, 160, 120, 1);
+    const runner: SegmentationRunner = {
+      async run(modelId, tensor, w, h) {
+        calls.push(modelId);
+        if (modelId === 'birefnet-lite') throw new ModelUnavailableError('BiRefNet lite needs WebGPU', modelId);
+        return truth.run(modelId, tensor, w, h);
+      },
+    };
+    const opts = options({ backgroundRemoval: { enabled: true, model: 'birefnet-lite', skipIfTransparent: false }, compression: { format: 'png' } });
+    const first = await processImage(bytes, opts, { segmentation: runner });
+    const second = await processImage(bytes, opts, { segmentation: runner });
+    expect(first.backgroundRemoved).toBe(true);
+    expect(first.warnings.join(' ')).toMatch(/RMBG-1\.4 .* was used instead/);
+    expect(second.backgroundRemoved).toBe(true);
+    expect(calls).toEqual(['birefnet-lite', 'rmbg-1.4', 'rmbg-1.4']);
   });
 });

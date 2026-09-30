@@ -1,7 +1,7 @@
 import type * as Ort from 'onnxruntime-web';
 import type { StageProgress } from '../types';
 import { getModelSpec } from './models';
-import type { SegmentationMask, SegmentationRunner } from './runner';
+import { isOutOfMemory, ModelUnavailableError, type ModelAccess, type SegmentationMask, type SegmentationRunner } from './runner';
 
 type OrtModule = typeof Ort;
 
@@ -18,7 +18,7 @@ export interface OnnxRunnerConfig {
    */
   loadRuntime: (onProgress?: (p: StageProgress) => void) => Promise<OrtRuntime>;
   /** Downloads (or reads from cache) a model file. */
-  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void) => Promise<Uint8Array>;
+  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void, access?: ModelAccess) => Promise<Uint8Array>;
 }
 
 /**
@@ -28,6 +28,8 @@ export interface OnnxRunnerConfig {
 export class OnnxSegmentationRunner implements SegmentationRunner {
   private runtime: Promise<OrtRuntime> | undefined;
   private readonly sessions = new Map<string, Promise<Ort.InferenceSession>>();
+  /** Models that proved unusable in this runtime (reported once, then skipped). */
+  private readonly unavailable = new Map<string, string>();
   /** Serialises inference: a session runs one image at a time, avoiding duplicate activation memory. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -43,14 +45,28 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
     width: number,
     height: number,
     onProgress?: (p: StageProgress) => void,
+    access?: ModelAccess,
   ): Promise<SegmentationMask> {
     const task = this.queue.then(async () => {
-      const session = await this.session(modelId, onProgress);
+      const known = this.unavailable.get(modelId);
+      if (known) throw new ModelUnavailableError(known, modelId);
+      const session = await this.session(modelId, onProgress, access);
       const { ort } = await this.runtime!;
       onProgress?.({ stage: 'removing-background', detail: 'Segmenting' });
       const input = new ort.Tensor('float32', tensor, [1, 3, height, width]);
       const feeds: Record<string, Ort.Tensor> = { [session.inputNames[0]!]: input };
-      const results = await session.run(feeds);
+      let results: Ort.InferenceSession.OnnxValueMapType;
+      try {
+        results = await session.run(feeds);
+      } catch (error) {
+        if (!isOutOfMemory(error)) throw error;
+        // std::bad_alloc: the WASM heap (max 4 GB) cannot hold this model's activations.
+        input.dispose();
+        await this.releaseSession(modelId);
+        const message = `${getModelSpec(modelId).label} needs more memory than the CPU backend can provide.`;
+        this.unavailable.set(modelId, message);
+        throw new ModelUnavailableError(message, modelId);
+      }
       const output = results[session.outputNames[0]!]!;
       try {
         const dims = output.dims;
@@ -69,7 +85,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
     return task;
   }
 
-  private session(modelId: string, onProgress?: (p: StageProgress) => void): Promise<Ort.InferenceSession> {
+  private session(modelId: string, onProgress?: (p: StageProgress) => void, access?: ModelAccess): Promise<Ort.InferenceSession> {
     let pending = this.sessions.get(modelId);
     if (!pending) {
       pending = (async () => {
@@ -84,15 +100,26 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
         const spec = getModelSpec(modelId);
         const options = { graphOptimizationLevel: 'all' } as const;
         const gpu = runtime.executionProviders.includes('webgpu');
-        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress);
+        if (!gpu && spec.requiresWebGpu) {
+          const message = `${spec.label} needs WebGPU, which is not available here.`;
+          this.unavailable.set(modelId, message);
+          throw new ModelUnavailableError(message, modelId);
+        }
+        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress, access);
         if (gpu) {
           // GPU-specific variant (e.g. fp16) when the model provides one.
           const variant = spec.webgpu ?? { url: spec.url, approxBytes: spec.approxBytes };
           try {
-            const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress);
+            const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress, access);
             onProgress?.({ stage: 'removing-background', detail: 'Initialising model (WebGPU)' });
             return await runtime.ort.InferenceSession.create(model, { ...options, executionProviders: runtime.executionProviders });
           } catch (error) {
+            if (error instanceof Error && /refused \(HTTP/.test(error.message)) throw error;
+            if (spec.requiresWebGpu || isOutOfMemory(error)) {
+              const message = `${spec.label} could not start on WebGPU (${error instanceof Error ? error.message : String(error)}).`;
+              this.unavailable.set(modelId, message);
+              throw new ModelUnavailableError(message, modelId);
+            }
             if (!runtime.executionProviders.includes('wasm')) throw error;
             // WebGPU unusable for this model (adapter limits, missing fp16, unsupported op): use the CPU.
             console.warn('[AssetForge] WebGPU session failed, falling back to CPU:', error);
@@ -106,6 +133,16 @@ export class OnnxSegmentationRunner implements SegmentationRunner {
       this.sessions.set(modelId, pending);
     }
     return pending;
+  }
+
+  private async releaseSession(modelId: string): Promise<void> {
+    const pending = this.sessions.get(modelId);
+    this.sessions.delete(modelId);
+    try {
+      await (await pending)?.release();
+    } catch {
+      // Already broken; nothing else to free.
+    }
   }
 
   async dispose(): Promise<void> {
@@ -132,6 +169,7 @@ export async function fetchWithCache(
   label: string,
   onProgress?: (p: StageProgress) => void,
   stage: StageProgress['stage'] = 'removing-background',
+  access?: ModelAccess,
 ): Promise<Uint8Array> {
   const cache = await openCache();
   if (cache) {
@@ -145,10 +183,20 @@ export async function fetchWithCache(
 
   let response: Response;
   try {
-    response = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    const headers: Record<string, string> = {};
+    // Tokens are only ever sent to Hugging Face itself (gated model downloads).
+    if (access?.huggingFaceToken && /(^|\.)huggingface\.co$/.test(new URL(url).hostname)) {
+      headers.Authorization = `Bearer ${access.huggingFaceToken.trim()}`;
+    }
+    response = await fetch(url, { mode: 'cors', credentials: 'omit', headers });
   } catch (error) {
     throw new Error(
       `Could not download ${label}. Check your internet connection (and that ${new URL(url).host} is allowed). ${String(error)}`,
+    );
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `Downloading ${label} was refused (HTTP ${response.status}). This model is gated: accept its licence on huggingface.co while signed in, then enter a Hugging Face access token (read) in the Background settings.`,
     );
   }
   if (!response.ok) throw new Error(`Downloading ${label} failed: HTTP ${response.status}`);

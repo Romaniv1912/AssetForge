@@ -67,7 +67,9 @@ export async function processImage(
   warnings.push(...decoded.warnings);
   const profile = detectColorProfile(bytes);
   if (profile.present && !profile.looksLikeSrgb) {
-    warnings.push('The source embeds a non-sRGB colour profile; pixels are processed as sRGB, so colours may shift slightly.');
+    warnings.push(
+      `Colour profile "${profile.description ?? 'unknown'}" is not sRGB; pixels are treated as sRGB, so colours may look slightly different.`,
+    );
   }
   let image: RgbaImage = decoded.image;
   if (ctx.onDecoded) await ctx.onDecoded(image);
@@ -91,6 +93,7 @@ export async function processImage(
         runner: ctx.segmentation,
         cancel: ctx.cancel,
         onProgress: ctx.onProgress,
+        onWarning: (message) => warnings.push(message),
       });
       backgroundRemoved = true;
     }

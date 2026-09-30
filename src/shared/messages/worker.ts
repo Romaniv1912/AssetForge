@@ -39,9 +39,10 @@ export type SegmentationRequest = {
   tensor: Float32Array;
   width: number;
   height: number;
+  huggingFaceToken?: string;
 };
 
 export type SegmentationResponse =
   | { type: 'SEGMENT_PROGRESS'; requestId: string; progress: StageProgress }
   | { type: 'SEGMENT_RESULT'; requestId: string; mask: Float32Array; width: number; height: number; backend: string }
-  | { type: 'SEGMENT_ERROR'; requestId: string; error: string };
+  | { type: 'SEGMENT_ERROR'; requestId: string; error: string; unavailableModel?: string };

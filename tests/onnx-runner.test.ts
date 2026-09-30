@@ -138,4 +138,83 @@ describe('ONNX Runtime segmentation runner', () => {
     expect(providers).toEqual([['webgpu', 'wasm'], ['wasm']]);
     await runner.dispose();
   });
+
+  it('reports WebGPU-only models as unavailable on the CPU backend without downloading them', async () => {
+    const { ModelUnavailableError } = await import('../src/image/background-removal/runner');
+    let downloads = 0;
+    const runner = new OnnxSegmentationRunner({
+      loadRuntime: async () => ({ ort: {} as never, executionProviders: ['wasm'], label: 'WebAssembly (CPU)' }),
+      loadModel: async () => {
+        downloads++;
+        return new Uint8Array();
+      },
+    });
+    await expect(runner.run('birefnet-lite', new Float32Array(3), 1, 1)).rejects.toBeInstanceOf(ModelUnavailableError);
+    expect(downloads).toBe(0);
+  });
+
+  it('turns std::bad_alloc into ModelUnavailableError, releases the session and fails fast afterwards', async () => {
+    const { ModelUnavailableError } = await import('../src/image/background-removal/runner');
+    let released = 0;
+    let runs = 0;
+    const fakeOrt = {
+      Tensor: class {
+        constructor(..._args: unknown[]) {}
+        dispose() {}
+      },
+      InferenceSession: {
+        create: async () => ({
+          inputNames: ['input'],
+          outputNames: ['output'],
+          run: async () => {
+            runs++;
+            throw new Error('failed to call OrtRun(). ERROR_CODE: 6, ERROR_MESSAGE: std::bad_alloc');
+          },
+          release: async () => {
+            released++;
+          },
+        }),
+      },
+    };
+    const runner = new OnnxSegmentationRunner({
+      loadRuntime: async () => ({ ort: fakeOrt as never, executionProviders: ['wasm'], label: 'cpu' }),
+      loadModel: async () => new Uint8Array(),
+    });
+    await expect(runner.run('tiny-test', new Float32Array(3), 1, 1)).rejects.toBeInstanceOf(ModelUnavailableError);
+    expect(released).toBe(1);
+    await expect(runner.run('tiny-test', new Float32Array(3), 1, 1)).rejects.toBeInstanceOf(ModelUnavailableError);
+    expect(runs).toBe(1);
+  });
+
+  it('sends the Hugging Face token only to huggingface.co', async () => {
+    const { fetchWithCache } = await import('../src/image/background-removal/onnx-runner');
+    const seen: Array<{ host: string; auth: string | null }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      seen.push({ host: new URL(url).hostname, auth: headers.get('authorization') });
+      return new Response(new Uint8Array([1, 2, 3]));
+    }) as typeof fetch;
+    try {
+      await fetchWithCache('https://huggingface.co/briaai/RMBG-2.0/resolve/main/onnx/model_fp16.onnx', 3, 'model', undefined, 'removing-background', { huggingFaceToken: ' hf_secret ' });
+      await fetchWithCache('https://cdn.jsdelivr.net/npm/x/y.wasm', 3, 'runtime', undefined, 'removing-background', { huggingFaceToken: 'hf_secret' });
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(seen).toEqual([
+      { host: 'huggingface.co', auth: 'Bearer hf_secret' },
+      { host: 'cdn.jsdelivr.net', auth: null },
+    ]);
+  });
+
+  it('explains gated downloads (HTTP 401/403)', async () => {
+    const { fetchWithCache } = await import('../src/image/background-removal/onnx-runner');
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('denied', { status: 401 })) as typeof fetch;
+    try {
+      await expect(fetchWithCache('https://huggingface.co/briaai/RMBG-2.0/x.onnx', 1, 'background model')).rejects.toThrow(/gated/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });

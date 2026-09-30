@@ -15,7 +15,7 @@ export const PLUGIN_DATA_KEY = 'assetforge';
 export const DEFAULT_OPTIONS: ProcessingOptions = {
   backgroundRemoval: {
     enabled: true,
-    model: 'birefnet-lite',
+    model: 'rmbg-1.4',
     skipIfTransparent: true,
     refineEdges: true,
     decontaminateColors: true,

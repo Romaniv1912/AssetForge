@@ -3,13 +3,18 @@ import { flattenOnto } from '../compression/compress';
 import { throwIfCancelled, type BackgroundRemovalOptions, type CancellationToken, type ProgressCallback, type RgbaImage } from '../types';
 import { getModelSpec, modelInputSize, type SegmentationModelSpec } from './models';
 import { bilinearResize, estimateForeground, guidedUpsample, type Plane } from './refine';
-import type { SegmentationRunner } from './runner';
+import { ModelUnavailableError, type SegmentationRunner } from './runner';
 
 export interface RemoveBackgroundContext {
   runner: SegmentationRunner;
   cancel?: CancellationToken;
   onProgress?: ProgressCallback;
+  /** Non-fatal notes (e.g. a fallback model was used). */
+  onWarning?: (message: string) => void;
 }
+
+/** Models found unusable in this worker; later images go straight to the fallback. */
+const unusableModels = new Set<string>();
 
 /** Alpha below this is treated as background noise; above the upper bound as solid. */
 const ALPHA_FLOOR = 3 / 255;
@@ -22,26 +27,46 @@ const ALPHA_CEIL = 252 / 255;
  */
 export async function removeBackground(
   image: RgbaImage,
-  options: Pick<BackgroundRemovalOptions, 'model' | 'refineEdges' | 'decontaminateColors'>,
+  options: Pick<BackgroundRemovalOptions, 'model' | 'refineEdges' | 'decontaminateColors' | 'huggingFaceToken'>,
   ctx: RemoveBackgroundContext,
 ): Promise<RgbaImage> {
-  const spec = getModelSpec(options.model);
   const { width: W, height: H } = image;
 
   // Models expect opaque RGB; existing transparency is re-applied at the end.
   const hasSourceAlpha = hasTransparency(image);
   const opaque = hasSourceAlpha ? flattenOnto(image, 255) : image;
 
-  const inputSize = modelInputSize(spec, W, H);
-  const modelInput = await resample(opaque, inputSize.width, inputSize.height, {
-    filter: 'triangle',
-    premultiply: false,
-    linearRGB: false,
-  });
-  const tensor = toTensor(modelInput, spec);
-  throwIfCancelled(ctx.cancel);
+  let spec = getModelSpec(options.model);
+  const requested = spec;
+  while (unusableModels.has(spec.id) && spec.fallback) spec = getModelSpec(spec.fallback);
 
-  const raw = await ctx.runner.run(spec.id, tensor, inputSize.width, inputSize.height, ctx.onProgress);
+  let modelInput: RgbaImage;
+  let raw: Awaited<ReturnType<SegmentationRunner['run']>>;
+  for (;;) {
+    const inputSize = modelInputSize(spec, W, H);
+    modelInput = await resample(opaque, inputSize.width, inputSize.height, {
+      filter: 'triangle',
+      premultiply: false,
+      linearRGB: false,
+    });
+    const tensor = toTensor(modelInput, spec);
+    throwIfCancelled(ctx.cancel);
+    try {
+      raw = await ctx.runner.run(spec.id, tensor, inputSize.width, inputSize.height, ctx.onProgress, {
+        huggingFaceToken: options.huggingFaceToken,
+      });
+      break;
+    } catch (error) {
+      if (!(error instanceof ModelUnavailableError) || !spec.fallback) throw error;
+      unusableModels.add(spec.id);
+      spec = getModelSpec(spec.fallback);
+    }
+  }
+  if (spec.id !== requested.id) {
+    ctx.onWarning?.(
+      `${requested.label} cannot run on this machine (it needs WebGPU / more memory), so ${spec.label} was used instead.`,
+    );
+  }
   throwIfCancelled(ctx.cancel);
   ctx.onProgress?.({ stage: 'removing-background', detail: 'Refining edges' });
 
@@ -106,6 +131,17 @@ export function toTensor(image: RgbaImage, spec: Pick<SegmentationModelSpec, 'me
 
 export function normalizeMask(data: Float32Array, spec: Pick<SegmentationModelSpec, 'outputNormalization'>): Float32Array {
   const out = new Float32Array(data.length);
+  if (spec.outputNormalization === 'auto') {
+    // Exports differ: some emit logits, some an already-activated matte.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of data) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    const logits = min < -0.01 || max > 1.01;
+    return normalizeMask(data, { outputNormalization: logits ? 'sigmoid' : 'none' });
+  }
   if (spec.outputNormalization === 'sigmoid') {
     for (let i = 0; i < data.length; i++) out[i] = 1 / (1 + Math.exp(-data[i]!));
     return out;

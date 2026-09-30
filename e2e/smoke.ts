@@ -47,7 +47,11 @@ function assert(condition: unknown, message: string): asserts condition {
 async function main() {
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as { port: number }).port;
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium' });
+  // Show real scrollbars (headless hides them by default) so screenshots match Figma.
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium',
+    ignoreDefaultArgs: ['--hide-scrollbars'],
+  });
   const page = await browser.newPage({ viewport: { width: 820, height: 720 } });
   const errors: string[] = [];
   lastErrors = errors;
@@ -133,11 +137,17 @@ async function main() {
   await frame.getByRole('tab', { name: 'Settings' }).click();
   await frame.getByText('Remove background', { exact: true }).click();
   await frame.getByText(/Runs locally/).waitFor();
+  // RMBG-2.0 needs WebGPU (absent in headless Chromium): exercises the automatic fallback.
+  await frame.getByLabel('Model').selectOption('rmbg-2.0');
+  await frame.getByText('Hugging Face token (read)').waitFor();
+  await frame.locator('.app__body').evaluate((el) => el.scrollTo(0, 200));
+  await page.screenshot({ path: `${shots}00-settings-rmbg2.png` });
   await frame.getByRole('button', { name: /Process 4 images/ }).click();
   await frame.getByRole('button', { name: /Replace in Figma/ }).waitFor({ timeout: 300_000 });
   const statusesBg = await frame.locator('.status').allTextContents();
   console.log('Statuses (background removal):', statusesBg.join(', '), '| downloads:', JSON.stringify(hits));
   assert(statusesBg.filter((s) => s === 'Completed').length === 3, 'three images completed with background removal');
+  await frame.getByText(/was used instead/).first().waitFor();
   assert(hits.model === 1, 'model downloaded exactly once for the whole batch');
   assert(hits.runtime >= 1, 'ONNX Runtime binary fetched');
   await frame.locator('.result__thumb').first().click();
@@ -145,7 +155,39 @@ async function main() {
   await frame.getByText('Background removed: yes').waitFor();
   await page.screenshot({ path: `${shots}06-background-removed.png` });
 
-  const relevantErrors = errors.filter((e) => !/favicon/.test(e));
+  // Figma dark theme: Figma injects its tokens and the figma-dark class into the iframe.
+  await frame.evaluate(() => {
+    const tokens: Record<string, string> = {
+      '--figma-color-bg': '#2c2c2c',
+      '--figma-color-bg-secondary': '#383838',
+      '--figma-color-bg-tertiary': '#444444',
+      '--figma-color-bg-hover': '#383838',
+      '--figma-color-bg-pressed': '#444444',
+      '--figma-color-bg-selected': '#4a5878',
+      '--figma-color-text': '#ffffff',
+      '--figma-color-text-secondary': 'rgba(255,255,255,0.7)',
+      '--figma-color-text-tertiary': 'rgba(255,255,255,0.4)',
+      '--figma-color-icon': '#ffffff',
+      '--figma-color-icon-secondary': 'rgba(255,255,255,0.7)',
+      '--figma-color-border': '#444444',
+      '--figma-color-border-strong': '#ffffff',
+      '--figma-color-text-brand': '#7cc4f8',
+      '--figma-color-text-success': '#79d297',
+      '--figma-color-bg-success-tertiary': '#0d3a24',
+      '--figma-color-text-danger': '#fca397',
+      '--figma-color-bg-danger-tertiary': '#4d1e14',
+      '--figma-color-text-warning': '#f7d15f',
+      '--figma-color-bg-warning-tertiary': '#4a3a0a',
+    };
+    document.documentElement.classList.add('figma-dark');
+    for (const [k, v] of Object.entries(tokens)) document.documentElement.style.setProperty(k, v);
+  });
+  await frame.getByRole('button', { name: /Close/ }).or(frame.locator('button[title^="Close"]')).first().click();
+  await page.screenshot({ path: `${shots}07-dark-results.png` });
+  await frame.getByRole('tab', { name: 'Settings' }).click();
+  await page.screenshot({ path: `${shots}08-dark-settings.png` });
+
+  const relevantErrors = errors.filter((e) => !/favicon|fonts\.g(oogleapis|static)\.com/.test(e));
   if (errors.length) console.log('Console:', errors.join('\n'));
   assert(relevantErrors.length === 0, `no page errors: ${relevantErrors.join(' | ')}`);
   await browser.close();

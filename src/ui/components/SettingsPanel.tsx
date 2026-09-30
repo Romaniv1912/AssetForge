@@ -1,7 +1,7 @@
 import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
-import { Checkbox, NumberField, Section, SelectField, Slider } from './Controls';
+import { Checkbox, NumberField, Section, SelectField, Slider, TextField } from './Controls';
 
 type Update = (updater: (options: ProcessingOptions) => ProcessingOptions) => void;
 
@@ -53,6 +53,22 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
               )}
               .
             </p>
+            {model.gated && (
+              <>
+                <TextField
+                  label="Hugging Face token (read)"
+                  secret
+                  placeholder="hf_…"
+                  value={bg.huggingFaceToken ?? ''}
+                  onChange={(huggingFaceToken) => set('backgroundRemoval', { huggingFaceToken })}
+                />
+                <p className="hint">
+                  This model is gated. Sign in at huggingface.co, accept the licence on {model.gated.acceptUrl.replace('https://', '')},
+                  then create a read token in Settings → Access Tokens. The token is stored only in Figma on this computer and
+                  sent only to huggingface.co.
+                </p>
+              </>
+            )}
             <Checkbox
               label="Refine edges"
               hint="Snap the mask to real image edges (hair, fur, outlines)"

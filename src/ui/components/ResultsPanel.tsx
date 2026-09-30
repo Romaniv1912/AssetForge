@@ -60,6 +60,12 @@ export function ResultRow(props: {
                 </span>
               )}
             </div>
+            {r.warnings.length > 0 && (
+              <div className="result__note" title={r.warnings.join('\n')}>
+                <IconAlert /> {r.warnings[0]}
+                {r.warnings.length > 1 ? ` (+${r.warnings.length - 1})` : ''}
+              </div>
+            )}
             {item.applyError && <div className="result__error">{item.applyError}</div>}
           </>
         ) : item.status === 'failed' ? (

@@ -136,7 +136,9 @@ Figma-independent (see below), so B or C can be added later as a
   components and instances, deduplicated by image hash), reports every
   unsupported node with a reason (no image fill, mixed text fills, video fills,
   image still loading…), reads image bytes on demand and writes results.
-- **UI** (`src/ui`) is a React app. Batches are processed with bounded
+- **UI** (`src/ui`) is a React app styled after Figma UI3 (Inter 11 px,
+  24 px filled controls, Figma scrollbars). All colours come from Figma's theme
+  tokens (`themeColors: true`), so it follows the user's light/dark theme. Batches are processed with bounded
   concurrency: an image's bytes are only requested from Figma when a worker is
   free, so memory does not grow with batch size. Failed items keep their reason
   and can be retried; the rest of the batch continues.
@@ -179,7 +181,7 @@ import { nodeWasmProvider } from './src/image/codecs/providers/node';
 setWasmBinaryProvider(nodeWasmProvider); // browser builds embed the binaries instead
 
 const result = await processImage(bytes, {
-  backgroundRemoval: { enabled: true, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
+  backgroundRemoval: { enabled: true, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
   crop: { enabled: true, padding: 8, alphaThreshold: 0 },
   resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
   compression: { format: 'original', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
@@ -203,23 +205,31 @@ bounded concurrency, per-item failure isolation and cancellation.
 Background removal is **real, local ML inference** with ONNX Runtime Web in a
 dedicated worker. Nothing is uploaded.
 
-| Model | Best for | Download | Licence |
-| --- | --- | --- | --- |
-| `birefnet-lite` (default) — BiRefNet lite (Swin-T), 1024² | best edges and fine detail (hair, fur, thin structures), products, people, objects | ≈ 115 MB fp16 with WebGPU / ≈ 224 MB fp32 on CPU | **MIT** — commercial use allowed |
-| `rmbg-1.4` — BRIA RMBG-1.4, IS-Net, 8-bit quantised | fast general-purpose on CPU | ≈ 44 MB | bria-rmbg-1.4: **non-commercial**; commercial use requires an agreement with BRIA |
-| `modnet` — MODNet, quantised | portraits / avatars only, fastest | ≈ 7 MB | Apache-2.0 |
+| Model | Best for | Download | Backend | Licence |
+| --- | --- | --- | --- | --- |
+| `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net, 8-bit | general purpose, works on any machine | ≈ 44 MB | CPU or GPU | bria-rmbg-1.4, non-commercial |
+| `rmbg-2.0` — BRIA RMBG-2.0 (BiRefNet architecture), fp16 | best quality: hair, fur, fine edges | ≈ 514 MB | **WebGPU only** | CC BY-NC 4.0; **gated** — needs a Hugging Face read token |
+| `birefnet-lite` — BiRefNet lite (Swin-T), fp16 | very clean edges, MIT licence | ≈ 115 MB | **WebGPU only** | MIT |
+| `modnet` — MODNet, 8-bit | portraits / avatars, fastest | ≈ 7 MB | CPU or GPU | Apache-2.0 |
 
-Why BiRefNet lite is the default: BiRefNet is the open-source state of the art
-for high-resolution dichotomous segmentation (BRIA itself reports BiRefNet well
-ahead of RMBG-1.4 in their benchmark), and it is MIT licensed, so it is safe for
-commercial use. It is heavier: with WebGPU the fp16 variant is used and runs
-fast; on CPU-only machines the fp32 model is used and takes tens of seconds per
-image — pick `rmbg-1.4` or `modnet` there. If WebGPU cannot create the session
-(no fp16 support, adapter limits) the runner falls back to the CPU model
-automatically. Considered but not bundled: **RMBG-2.0** (BiRefNet trained on
-BRIA's data, best quality, but CC BY-NC and ~2× the size) and **BEN2** (MIT,
-strong matting, but no maintained browser ONNX export at the time of writing) —
-both can be added with `registerSegmentationModel()`.
+AssetForge is an open, non-commercial project, so non-commercial model licences
+are fine here; if you fork it for a commercial product, use `birefnet-lite` or
+`modnet`, or license the BRIA models.
+
+**Why some models are WebGPU-only.** 1024² transformer models (BiRefNet,
+RMBG-2.0) need more activation memory than the WebAssembly CPU backend can
+address (4 GB), which surfaces as `OrtRun() … std::bad_alloc`. They are
+therefore only started when WebGPU is available. If a model cannot run (no
+WebGPU, out of memory) AssetForge automatically falls back to RMBG-1.4 for the
+rest of the session and shows a note on the affected results — the batch never
+fails because of it.
+
+**RMBG-2.0 access.** The repository is gated by BRIA: sign in at
+huggingface.co, accept the licence on
+[briaai/RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0), create a *read*
+access token and paste it into *Background → Hugging Face token*. The token is
+stored with the plugin settings on your computer and is only sent to
+huggingface.co.
 
 How it works:
 

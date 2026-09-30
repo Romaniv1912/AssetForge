@@ -1,30 +1,75 @@
+import { unzlibSync } from 'fflate';
 /**
  * Minimal, allocation-light readers for container metadata that affects how
  * pixels must be interpreted (colour profiles) and for stripping metadata from
  * files that are passed through without re-encoding.
  */
 
-/** Returns the ICC profile description if the file embeds one (PNG iCCP / JPEG APP2). */
-export function detectColorProfile(bytes: Uint8Array): { present: boolean; looksLikeSrgb: boolean } {
+/**
+ * Detects an embedded ICC profile (PNG iCCP / JPEG APP2) and whether it is an
+ * sRGB profile, by reading the profile's description tag (not the chunk name,
+ * which is often a generic "ICC Profile").
+ */
+export function detectColorProfile(bytes: Uint8Array): { present: boolean; looksLikeSrgb: boolean; description?: string } {
+  let profile: Uint8Array | undefined;
   const png = findPngChunk(bytes, 'iCCP');
   if (png) {
-    const name = latin1(png, 0, Math.min(79, png.indexOf(0) < 0 ? png.length : png.indexOf(0)));
-    return { present: true, looksLikeSrgb: /srgb/i.test(name) };
-  }
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    const nul = png.indexOf(0);
+    try {
+      profile = unzlibSync(png.subarray(nul + 2));
+    } catch {
+      return { present: true, looksLikeSrgb: true };
+    }
+  } else if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    const parts: Uint8Array[] = [];
     let offset = 2;
     while (offset + 4 <= bytes.length && bytes[offset] === 0xff) {
       const marker = bytes[offset + 1]!;
       if (marker === 0xda || marker === 0xd9) break;
       const length = (bytes[offset + 2]! << 8) | bytes[offset + 3]!;
       if (marker === 0xe2 && latin1(bytes, offset + 4, 11) === 'ICC_PROFILE') {
-        const segment = bytes.subarray(offset + 4, offset + 2 + length);
-        return { present: true, looksLikeSrgb: /srgb/i.test(latin1(segment, 0, segment.length)) };
+        parts.push(bytes.subarray(offset + 18, offset + 2 + length)); // after "ICC_PROFILE\0" + seq + count
       }
       offset += 2 + length;
     }
+    if (parts.length) {
+      const total = parts.reduce((n, p) => n + p.length, 0);
+      profile = concat(parts, total);
+    }
   }
-  return { present: false, looksLikeSrgb: true };
+  if (!profile) return { present: false, looksLikeSrgb: true };
+  const description = iccDescription(profile);
+  // Unreadable descriptions are assumed sRGB rather than warning spuriously.
+  const looksLikeSrgb = description === undefined || /srgb|iec\s*61966/i.test(description);
+  return { present: true, looksLikeSrgb, description };
+}
+
+/** Reads the `desc` tag of an ICC profile (v2 textDescriptionType or v4 multiLocalizedUnicodeType). */
+export function iccDescription(profile: Uint8Array): string | undefined {
+  if (profile.length < 132) return undefined;
+  const count = readU32(profile, 128);
+  for (let i = 0; i < count && 132 + i * 12 + 12 <= profile.length; i++) {
+    const entry = 132 + i * 12;
+    if (latin1(profile, entry, 4) !== 'desc') continue;
+    const offset = readU32(profile, entry + 4);
+    const type = latin1(profile, offset, 4);
+    if (type === 'desc') {
+      const length = readU32(profile, offset + 8);
+      return latin1(profile, offset + 12, Math.max(0, length - 1)).replace(/\0+$/, '');
+    }
+    if (type === 'mluc') {
+      // mluc: 'mluc', reserved, record count, record size, then the first record
+      // (language, country, byte length, offset from the tag start) — UTF-16BE text.
+      const len = readU32(profile, offset + 20);
+      const start = offset + readU32(profile, offset + 24);
+      let text = '';
+      for (let j = 0; j + 1 < len && start + j + 1 < profile.length; j += 2) {
+        text += String.fromCharCode((profile[start + j]! << 8) | profile[start + j + 1]!);
+      }
+      return text;
+    }
+  }
+  return undefined;
 }
 
 function findPngChunk(bytes: Uint8Array, type: string): Uint8Array | undefined {

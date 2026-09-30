@@ -1,3 +1,4 @@
+import { ModelUnavailableError } from '../../image/background-removal/runner';
 import type { SegmentationRequest, SegmentationResponse } from '../../shared/messages/worker';
 import { createBrowserSegmentationRunner } from './ml-runtime';
 import { workerScope } from './scope';
@@ -17,8 +18,13 @@ function serve(port: MessagePort): void {
     if (request.type !== 'SEGMENT') return;
     const reply = (message: SegmentationResponse, transfer: Transferable[] = []) => port.postMessage(message, transfer);
     try {
-      const mask = await runner.run(request.modelId, request.tensor, request.width, request.height, (progress) =>
-        reply({ type: 'SEGMENT_PROGRESS', requestId: request.requestId, progress }),
+      const mask = await runner.run(
+        request.modelId,
+        request.tensor,
+        request.width,
+        request.height,
+        (progress) => reply({ type: 'SEGMENT_PROGRESS', requestId: request.requestId, progress }),
+        { huggingFaceToken: request.huggingFaceToken },
       );
       reply(
         {
@@ -32,7 +38,12 @@ function serve(port: MessagePort): void {
         [mask.data.buffer],
       );
     } catch (error) {
-      reply({ type: 'SEGMENT_ERROR', requestId: request.requestId, error: error instanceof Error ? error.message : String(error) });
+      reply({
+        type: 'SEGMENT_ERROR',
+        requestId: request.requestId,
+        error: error instanceof Error ? error.message : String(error),
+        unavailableModel: error instanceof ModelUnavailableError ? error.modelId : undefined,
+      });
     }
   };
   port.start();

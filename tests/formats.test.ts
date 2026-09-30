@@ -1,3 +1,4 @@
+import { zlibSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import './helpers/setup';
 import { encodeAvif, encodeJpeg, encodePng, encodeWebp } from '../src/image/codecs';
@@ -51,8 +52,13 @@ describe('metadata', () => {
   it('detects embedded colour profiles', async () => {
     const png = await encodePng(transparentIllustration(8, 8));
     expect(detectColorProfile(png).present).toBe(false);
-    const withP3 = insertPngChunk(png, 'iCCP', new TextEncoder().encode('Display P3\u0000\u0000xx'));
-    expect(detectColorProfile(withP3)).toEqual({ present: true, looksLikeSrgb: false });
+    const name = new TextEncoder().encode('ICC Profile\u0000\u0000');
+    const compressed = zlibSync(minimalIccProfile('Display P3'));
+    const chunk = new Uint8Array(name.length + compressed.length);
+    chunk.set(name);
+    chunk.set(compressed, name.length);
+    const withP3 = insertPngChunk(png, 'iCCP', chunk);
+    expect(detectColorProfile(withP3)).toMatchObject({ present: true, looksLikeSrgb: false, description: 'Display P3' });
   });
 });
 
@@ -78,4 +84,35 @@ function crc32(bytes: Uint8Array): number {
     for (let k = 0; k < 8; k++) crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
   }
   return (crc ^ 0xffffffff) >>> 0;
+}
+
+describe('colour profile descriptions', () => {
+  it('recognises the sRGB profile inside a compressed PNG iCCP chunk', async () => {
+    const { fixture } = await import('./helpers/setup');
+    expect(detectColorProfile(fixture('chelsea.png'))).toMatchObject({ present: true, looksLikeSrgb: true });
+  });
+
+  it('flags a real non-sRGB profile (Adobe RGB JPEG)', async () => {
+    const { fixture } = await import('./helpers/setup');
+    expect(detectColorProfile(fixture('rocket.jpg'))).toMatchObject({ present: true, looksLikeSrgb: false, description: 'Adobe RGB (1998)' });
+  });
+});
+
+/** ICC profile with only a v2 `desc` tag — enough for description parsing. */
+function minimalIccProfile(description: string): Uint8Array {
+  const text = new TextEncoder().encode(description);
+  const tagOffset = 144;
+  const tagSize = 12 + text.length + 1;
+  const out = new Uint8Array(tagOffset + tagSize);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, out.length);
+  out.set(new TextEncoder().encode('RGB XYZ '), 16);
+  view.setUint32(128, 1);
+  out.set(new TextEncoder().encode('desc'), 132);
+  view.setUint32(136, tagOffset);
+  view.setUint32(140, tagSize);
+  out.set(new TextEncoder().encode('desc'), tagOffset);
+  view.setUint32(tagOffset + 8, text.length + 1);
+  out.set(text, tagOffset + 12);
+  return out;
 }

@@ -38,35 +38,23 @@ export interface SegmentationModelSpec {
    * How to map the raw output to [0,1]: `sigmoid` for logit outputs,
    * `minmax` to rescale by the output's range, `none` when already a matte.
    */
-  outputNormalization: 'none' | 'minmax' | 'sigmoid';
+  outputNormalization: 'none' | 'minmax' | 'sigmoid' | 'auto';
+  /**
+   * The model only runs with WebGPU. The CPU (WASM) backend is limited to
+   * 4 GB of memory, which large 1024² transformers exceed (std::bad_alloc).
+   */
+  requiresWebGpu?: boolean;
+  /** Model used instead when this one cannot run (no WebGPU, out of memory). */
+  fallback?: string;
+  /** Download needs a Hugging Face token (gated repository). */
+  gated?: { acceptUrl: string };
 }
 
 const registry: SegmentationModelSpec[] = [
   {
-    id: 'birefnet-lite',
-    label: 'BiRefNet lite (best quality)',
-    description:
-      'BiRefNet lite (Swin-T, 1024²): high-resolution dichotomous segmentation with very clean edges and fine detail (hair, fur, thin structures). MIT licensed.',
-    // fp32 for the CPU backend (the WASM CPU EP has no fast fp16 kernels).
-    url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx',
-    approxBytes: 224_000_000,
-    webgpu: {
-      url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model_fp16.onnx',
-      approxBytes: 115_000_000,
-    },
-    performanceNote: 'Fast with WebGPU (≈115 MB download). Without a GPU it downloads ≈224 MB and takes tens of seconds per image.',
-    license: 'MIT',
-    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
-    commercialUse: 'allowed',
-    input: { kind: 'fixed', width: 1024, height: 1024 },
-    mean: [0.485, 0.456, 0.406],
-    std: [0.229, 0.224, 0.225],
-    outputNormalization: 'sigmoid',
-  },
-  {
     id: 'rmbg-1.4',
-    label: 'RMBG-1.4 (fast, non-commercial)',
-    description: 'BRIA RMBG-1.4 (IS-Net architecture). Good general-purpose quality, small (8-bit) and fast on CPU.',
+    label: 'RMBG-1.4 (recommended)',
+    description: 'BRIA RMBG-1.4 (IS-Net architecture). Good general-purpose quality, small (8-bit) and fast on any machine.',
     url: 'https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx',
     approxBytes: 44_403_226,
     license: 'bria-rmbg-1.4 (free for non-commercial use)',
@@ -76,11 +64,49 @@ const registry: SegmentationModelSpec[] = [
     mean: [0.5, 0.5, 0.5],
     std: [1, 1, 1],
     outputNormalization: 'minmax',
-    performanceNote: '≈44 MB download, a few seconds per image on CPU.',
+    performanceNote: '≈44 MB download, a few seconds per image, works without a GPU.',
+  },
+  {
+    id: 'rmbg-2.0',
+    label: 'RMBG-2.0 (best quality, WebGPU)',
+    description:
+      'BRIA RMBG-2.0: BiRefNet architecture trained on BRIA\'s licensed data — the strongest open model for hair, fur and fine edges.',
+    url: 'https://huggingface.co/briaai/RMBG-2.0/resolve/main/onnx/model_fp16.onnx',
+    approxBytes: 514_000_000,
+    performanceNote:
+      'Needs WebGPU and ≈514 MB download (cached). Gated on Hugging Face: accept the licence and add a read token below.',
+    license: 'CC BY-NC 4.0 (non-commercial)',
+    licenseUrl: 'https://huggingface.co/briaai/RMBG-2.0',
+    commercialUse: 'requires-agreement',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+    outputNormalization: 'auto',
+    requiresWebGpu: true,
+    fallback: 'rmbg-1.4',
+    gated: { acceptUrl: 'https://huggingface.co/briaai/RMBG-2.0' },
+  },
+  {
+    id: 'birefnet-lite',
+    label: 'BiRefNet lite (WebGPU)',
+    description:
+      'BiRefNet lite (Swin-T, 1024²): very clean edges and fine detail (hair, fur, thin structures). MIT licensed.',
+    url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model_fp16.onnx',
+    approxBytes: 115_000_000,
+    performanceNote: 'Needs WebGPU, ≈115 MB download (cached).',
+    license: 'MIT',
+    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
+    commercialUse: 'allowed',
+    input: { kind: 'fixed', width: 1024, height: 1024 },
+    mean: [0.485, 0.456, 0.406],
+    std: [0.229, 0.224, 0.225],
+    outputNormalization: 'sigmoid',
+    requiresWebGpu: true,
+    fallback: 'rmbg-1.4',
   },
   {
     id: 'modnet',
-    label: 'MODNet (portraits)',
+    label: 'MODNet (portraits, fastest)',
     description: 'MODNet portrait matting. Small and fast, Apache-2.0; designed for people/avatars only.',
     url: 'https://huggingface.co/Xenova/modnet/resolve/main/onnx/model_quantized.onnx',
     approxBytes: 6_628_732,
@@ -98,7 +124,7 @@ const registry: SegmentationModelSpec[] = [
 /** Live view of the registry (includes models added with `registerSegmentationModel`). */
 export const SEGMENTATION_MODELS: readonly SegmentationModelSpec[] = registry;
 
-export const DEFAULT_SEGMENTATION_MODEL = 'birefnet-lite';
+export const DEFAULT_SEGMENTATION_MODEL = 'rmbg-1.4';
 
 /**
  * Adds (or replaces) a model at runtime, e.g. a self-hosted copy or a custom

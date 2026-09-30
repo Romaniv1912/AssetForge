@@ -3,7 +3,7 @@ import { decodeAvif, decodePng, decodeWebp, encodeJpeg, encodeWebp, optimisePngR
 import { browserFallbackDecoder } from '../../image/decode/decode';
 import { sniffFormat } from '../../image/decode/sniff';
 import { processImage } from '../../image/pipeline/process-image';
-import type { CancellationToken, ProcessingOptions, RgbaImage, StageProgress } from '../../image/types';
+import type { CancellationToken, NormalizedRect, ProcessingOptions, RgbaImage, StageProgress } from '../../image/types';
 import type { ProcessingResultPayload } from '../../shared/messages/worker';
 
 /**
@@ -17,10 +17,12 @@ export async function executeJob(
   segmentation: SegmentationRunner | undefined,
   cancel: CancellationToken,
   onProgress: (progress: StageProgress) => void,
+  sourceCrop: NormalizedRect | null = null,
 ): Promise<ProcessingResultPayload> {
   let sourcePreview: Uint8Array | null = null;
   const result = await processImage(bytes, options, {
     segmentation,
+    sourceCrop,
     fallbackDecoder: browserFallbackDecoder,
     cancel,
     onProgress,

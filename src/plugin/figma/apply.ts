@@ -8,6 +8,8 @@ const INSERT_GAP = 40;
  *
  * - `replace`: every fill that showed the original image now references the
  *   new image. Other paint properties (filters, opacity, blend mode…) are kept.
+ *   Cropped fills were processed from their visible region only, so their
+ *   crop is reset and the new image fills the layer.
  * - `insert`: a new rectangle at the processed pixel size is placed next to
  *   the first node that used the image, leaving the original untouched.
  */
@@ -38,12 +40,16 @@ export async function applyResults(items: ApplyItem[], mode: ApplyMode, matchAsp
           if (fillable.fills === figma.mixed) throw new Error('Layer has mixed fills');
           const fills = [...fillable.fills];
           const paint = fills[target.fillIndex];
-          if (!paint || paint.type !== 'IMAGE' || paint.imageHash !== item.imageId) {
+          if (!paint || paint.type !== 'IMAGE' || paint.imageHash !== item.imageHash) {
             throw new Error('The image fill changed since it was processed');
           }
           const aspectChanged = aspectDiffers(item);
           let next: ImagePaint = { ...paint, imageHash: image.hash };
-          if (paint.scaleMode === 'CROP' && aspectChanged) {
+          if (item.cropped) {
+            // The new image already is the visible part: drop the crop so it shows whole.
+            const { imageTransform: _dropped, ...rest } = next;
+            next = { ...rest, scaleMode: 'FILL' };
+          } else if (paint.scaleMode === 'CROP' && aspectChanged) {
             // A crop transform is relative to the old image and would now show the wrong region.
             const { imageTransform: _dropped, ...rest } = next;
             next = { ...rest, scaleMode: 'FILL' };
@@ -65,7 +71,7 @@ export async function applyResults(items: ApplyItem[], mode: ApplyMode, matchAsp
           try {
             node.setPluginData(
               PLUGIN_DATA_KEY,
-              JSON.stringify({ originalImageHash: item.imageId, processedImageHash: image.hash, processedAt: Date.now() }),
+              JSON.stringify({ originalImageHash: item.imageHash, processedImageHash: image.hash, processedAt: Date.now() }),
             );
           } catch {
             // Some layers (e.g. inside remote instances) refuse plugin data; the fill was still replaced.
@@ -113,7 +119,7 @@ async function insertNode(hash: string, item: ApplyItem): Promise<SceneNode> {
   rect.fills = [{ type: 'IMAGE', imageHash: hash, scaleMode: 'FILL' }];
   rect.setPluginData(
     PLUGIN_DATA_KEY,
-    JSON.stringify({ originalImageHash: item.imageId, processedImageHash: hash, processedAt: Date.now() }),
+    JSON.stringify({ originalImageHash: item.imageHash, processedImageHash: hash, processedAt: Date.now() }),
   );
 
   const first = item.targets[0];

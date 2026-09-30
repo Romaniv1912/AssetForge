@@ -13,6 +13,7 @@ import {
   throwIfCancelled,
   type CancellationToken,
   type EncodableFormat,
+  type NormalizedRect,
   type ProcessedImage,
   type ProcessingOptions,
   type ProcessingStage,
@@ -28,6 +29,8 @@ export interface PipelineContext {
   segmentation?: SegmentationRunner;
   fallbackDecoder?: FallbackDecoder;
   quantizer?: Quantizer;
+  /** Process only this region of the source (e.g. the visible part of a cropped Figma fill). */
+  sourceCrop?: NormalizedRect | null;
   cancel?: CancellationToken;
   onProgress?: ProgressCallback;
   /** Receives the decoded source pixels (e.g. to render a thumbnail). */
@@ -72,6 +75,9 @@ export async function processImage(
     );
   }
   let image: RgbaImage = decoded.image;
+  const sourceRegion = ctx.sourceCrop ? pixelRect(ctx.sourceCrop, image.width, image.height) : null;
+  const sourceCropped = sourceRegion !== null && (sourceRegion.width !== image.width || sourceRegion.height !== image.height);
+  if (sourceCropped) image = cropImage(image, sourceRegion!);
   if (ctx.onDecoded) await ctx.onDecoded(image);
   leave('loading');
 
@@ -153,7 +159,7 @@ export async function processImage(
     leave('resizing');
   }
 
-  const pixelsChanged = backgroundRemoved || cropped || resized || applyPadding;
+  const pixelsChanged = sourceCropped || backgroundRemoved || cropped || resized || applyPadding;
   if (pixelsChanged) analysis = analyzeImage(image, decoded.format);
 
   // 6. Compress
@@ -237,6 +243,15 @@ export async function processImage(
     timings,
     warnings,
   };
+}
+
+/** Converts a fractional region to whole pixels inside the image (at least 1×1). */
+export function pixelRect(rect: NormalizedRect, width: number, height: number) {
+  const x0 = Math.min(width - 1, Math.max(0, Math.round(rect.x * width)));
+  const y0 = Math.min(height - 1, Math.max(0, Math.round(rect.y * height)));
+  const x1 = Math.min(width, Math.max(x0 + 1, Math.round((rect.x + rect.width) * width)));
+  const y1 = Math.min(height, Math.max(y0 + 1, Math.round((rect.y + rect.height) * height)));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 async function passThrough(bytes: Uint8Array, format: EncodableFormat): Promise<Uint8Array> {

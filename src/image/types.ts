@@ -144,6 +144,14 @@ export interface StageTimings {
   [stage: string]: number;
 }
 
+/** A rectangle in fractions (0–1) of the full image, e.g. a Figma crop. */
+export interface NormalizedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface ProcessedImage {
   data: Uint8Array;
   format: EncodableFormat;

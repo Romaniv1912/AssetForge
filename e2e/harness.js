@@ -15,6 +15,8 @@ const send = (msg) => frame.contentWindow.postMessage({ pluginMessage: msg }, '*
 const selection = {
   images: Object.entries(images).map(([id, img], i) => ({
     id,
+    hash: id,
+    crop: null,
     name: img.name,
     width: img.width,
     height: img.height,

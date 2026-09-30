@@ -49,6 +49,7 @@ scope.onmessage = async (event) => {
       try {
         const payload = await executeJob(message.bytes, message.options, message.previewSize, segmentation, token, (progress) =>
           post({ type: 'PROGRESS', jobId: message.jobId, progress }),
+          message.crop,
         );
         const transfer: Transferable[] = [payload.result.data.buffer as ArrayBuffer];
         if (payload.sourcePreview) transfer.push(payload.sourcePreview.buffer as ArrayBuffer);

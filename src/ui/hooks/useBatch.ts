@@ -74,12 +74,18 @@ export function useBatch(backend: ProcessingBackend | null) {
         startedAt: Date.now(),
       });
       try {
-        const bytes = await requestImageBytes(item.id);
+        const bytes = await requestImageBytes(item.source.hash);
         if (cancelled.current || gen !== generation.current) throw new CancelledError();
-        const payload = await backend.process(item.id, bytes, options, (progress) => {
-          if (gen !== generation.current) return;
-          patch(item.id, { stage: progress.stage, stageDetail: progress.detail, stageFraction: progress.fraction });
-        });
+        const payload = await backend.process(
+          item.id,
+          bytes,
+          options,
+          (progress) => {
+            if (gen !== generation.current) return;
+            patch(item.id, { stage: progress.stage, stageDetail: progress.detail, stageFraction: progress.fraction });
+          },
+          item.source.crop,
+        );
         if (gen !== generation.current) return;
         const { result, sourcePreview } = payload;
         const outputUrl = URL.createObjectURL(new Blob([result.data as BlobPart], { type: result.mimeType }));
@@ -206,12 +212,15 @@ export function useBatch(backend: ProcessingBackend | null) {
               : await backend.encodeForFigma(result.data);
           payload.push({
             imageId: item.id,
+            imageHash: item.source.hash,
+            cropped: item.source.crop !== null,
             name: item.name,
             bytes: figmaBytes.bytes,
             width: figmaBytes.width,
             height: figmaBytes.height,
-            sourceWidth: item.source.width,
-            sourceHeight: item.source.height,
+            // Size of what was processed (the visible crop, if any).
+            sourceWidth: result.placement.sourceWidth,
+            sourceHeight: result.placement.sourceHeight,
             targets: item.source.targets,
             label: `${result.format.toUpperCase()} ${result.width}×${result.height}`,
           });

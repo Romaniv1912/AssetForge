@@ -1,5 +1,5 @@
 import type { WasmBinaryName } from '../../image/codecs/wasm-provider';
-import type { ProcessedImage, ProcessingOptions, StageProgress } from '../../image/types';
+import type { NormalizedRect, ProcessedImage, ProcessingOptions, StageProgress } from '../../image/types';
 
 /**
  * Protocol between the UI thread and the processing workers.
@@ -12,7 +12,16 @@ import type { ProcessedImage, ProcessingOptions, StageProgress } from '../../ima
 
 export type ProcessingRequest =
   | { type: 'INIT'; mlPort: MessagePort | null }
-  | { type: 'PROCESS'; jobId: string; name: string; bytes: Uint8Array; options: ProcessingOptions; previewSize: number }
+  | {
+      type: 'PROCESS';
+      jobId: string;
+      name: string;
+      bytes: Uint8Array;
+      options: ProcessingOptions;
+      previewSize: number;
+      /** Visible region of a cropped fill; only this part is processed. */
+      crop: NormalizedRect | null;
+    }
   | { type: 'CANCEL'; jobId: string }
   | { type: 'ENCODE_FOR_FIGMA'; jobId: string; bytes: Uint8Array }
   | { type: 'WASM_BINARY'; name: WasmBinaryName; bytes: Uint8Array | null; error?: string }

@@ -327,6 +327,14 @@ Downloads keep the chosen format. Replacements keep the paint's other
 properties, can resize the layer to the new aspect ratio, and record the
 original image hash in plugin data.
 
+**Cropped images.** A fill cropped with Figma's crop tool (scale mode *Crop*)
+is processed from its visible region only: e.g. from a 2000 px image cropped
+to 1200×800, just those 1200×800 px are cut out, background-removed and
+compressed. On "Replace in Figma" the crop is reset (scale mode *Fill*) and
+the layer shows the whole new image, so it looks the same but no hidden pixels
+are stored. The same image with different crops becomes separate items.
+Rotated or flipped crops are processed as the whole image.
+
 ## Benchmark and preset tuning
 
 `pnpm run benchmark` runs the production engine (same WASM codecs) over real

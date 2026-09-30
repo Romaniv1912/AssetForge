@@ -2,7 +2,7 @@ import { CODEC_WASM_BASE64 } from 'virtual:assetforge-codec-wasm';
 import { base64ToBytes, base64WasmProvider } from '../../image/codecs/providers/base64';
 import { setWasmBinaryProvider, type WasmBinaryName } from '../../image/codecs/wasm-provider';
 import type { SegmentationRunner } from '../../image/background-removal/runner';
-import { CancelledError, type ProcessingOptions, type StageProgress } from '../../image/types';
+import { CancelledError, type NormalizedRect, type ProcessingOptions, type StageProgress } from '../../image/types';
 import type { ProcessingRequest, ProcessingResponse, ProcessingResultPayload } from '../../shared/messages/worker';
 import MlWorker from '../workers/ml.worker?worker&inline';
 import ProcessingWorker from '../workers/processing.worker?worker&inline';
@@ -26,6 +26,7 @@ export interface ProcessingBackend {
     bytes: Uint8Array,
     options: ProcessingOptions,
     onProgress: (p: StageProgress) => void,
+    crop?: NormalizedRect | null,
   ): Promise<ProcessingResultPayload>;
   cancel(jobId: string): void;
   /** Stops everything immediately (workers are terminated and respawned). */
@@ -62,6 +63,7 @@ type Task =
       jobId: string;
       bytes: Uint8Array;
       options: ProcessingOptions;
+      crop: NormalizedRect | null;
       onProgress: (p: StageProgress) => void;
       resolve: (payload: ProcessingResultPayload) => void;
       reject: (error: Error) => void;
@@ -199,6 +201,7 @@ class WorkerBackend implements ProcessingBackend {
           bytes: task.bytes,
           options: task.options,
           previewSize: PREVIEW_SIZE,
+          crop: task.crop,
         };
         // The source bytes are transferred: the UI thread keeps no copy.
         slot.worker.postMessage(request, [task.bytes.buffer as ArrayBuffer]);
@@ -208,9 +211,9 @@ class WorkerBackend implements ProcessingBackend {
     }
   }
 
-  process(jobId: string, bytes: Uint8Array, options: ProcessingOptions, onProgress: (p: StageProgress) => void) {
+  process(jobId: string, bytes: Uint8Array, options: ProcessingOptions, onProgress: (p: StageProgress) => void, crop: NormalizedRect | null = null) {
     return new Promise<ProcessingResultPayload>((resolve, reject) => {
-      this.queue.push({ kind: 'process', jobId, bytes, options, onProgress, resolve, reject });
+      this.queue.push({ kind: 'process', jobId, bytes, options, crop, onProgress, resolve, reject });
       this.pump();
     });
   }
@@ -275,14 +278,14 @@ class InlineBackend implements ProcessingBackend {
     return this.segmentation;
   }
 
-  process(jobId: string, bytes: Uint8Array, options: ProcessingOptions, onProgress: (p: StageProgress) => void) {
+  process(jobId: string, bytes: Uint8Array, options: ProcessingOptions, onProgress: (p: StageProgress) => void, crop: NormalizedRect | null = null) {
     const token = { cancelled: false };
     this.tokens.set(jobId, token);
     const run = this.chain.then(async () => {
       const { executeJob } = await import('./executor');
       const segmentation = options.backgroundRemoval.enabled ? await this.runner() : undefined;
       try {
-        return await executeJob(bytes, options, PREVIEW_SIZE, segmentation, token, onProgress);
+        return await executeJob(bytes, options, PREVIEW_SIZE, segmentation, token, onProgress, crop);
       } finally {
         this.tokens.delete(jobId);
       }

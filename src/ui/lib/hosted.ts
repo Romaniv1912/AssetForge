@@ -42,6 +42,7 @@ export async function redirectToHostedUi(): Promise<boolean> {
     return false;
   }
   const probe = new URL('version.json', base).href;
+  let build = '';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
@@ -50,7 +51,8 @@ export async function redirectToHostedUi(): Promise<boolean> {
       bundledReason = `${probe} returned HTTP ${response.status}`;
       return false;
     }
-    const info = (await response.json()) as { protocol?: number };
+    const info = (await response.json()) as { protocol?: number; build?: string };
+    build = info.build ?? '';
     if (info.protocol !== PROTOCOL_VERSION) {
       bundledReason = `the hosted copy uses protocol ${String(info.protocol)}, this plugin ${PROTOCOL_VERSION} (update the plugin)`;
       return false;
@@ -65,6 +67,7 @@ export async function redirectToHostedUi(): Promise<boolean> {
     clearTimeout(timer);
   }
   const url = new URL(base);
+  if (build) url.searchParams.set('build', build);
   url.hash = `${THEME_PARAM}=${encodeURIComponent(JSON.stringify(collectTheme()))}`;
   location.replace(url.href);
   return true;

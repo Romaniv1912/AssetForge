@@ -26,7 +26,9 @@ const versionManifest = (): Plugin => ({
     this.emitFile({
       type: 'asset',
       fileName: 'version.json',
-      source: `${JSON.stringify({ version: appVersion, protocol: protocolVersion }, null, 2)}\n`,
+      // `build` changes on every deploy; the UI URL carries it so a fresh
+      // deploy is never hidden behind GitHub Pages' 10-minute HTTP cache.
+      source: `${JSON.stringify({ version: appVersion, protocol: protocolVersion, build: process.env.GITHUB_SHA ?? String(Date.now()) }, null, 2)}\n`,
     });
   },
 });

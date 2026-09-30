@@ -76,7 +76,31 @@ export function PreviewModal(props: {
   }, [props]);
 
   const sameSize = original !== null && original.width === result.width && original.height === result.height;
-  const effectiveMode: Mode = mode === 'slider' && sameSize ? 'slider' : 'side';
+  // The slider works for every result: the output is overlaid on the original
+  // at the position recorded by the pipeline (crop box, padding, resize).
+  const effectiveMode: Mode = mode === 'slider' && original !== null ? 'slider' : 'side';
+  const place = result.placement;
+  const stackRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setViewSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [effectiveMode]);
+  const sliderScale =
+    !original || zoom !== 'fit'
+      ? (zoom === 'fit' ? 1 : zoom)
+      : Math.min(1, (viewSize.width - 16) / original.width, (viewSize.height - 16) / original.height);
+  const moveSplit = (clientX: number) => {
+    const rect = stackRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    setSplit(Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)));
+  };
 
   // Keep both panes scrolled to the same spot when the images line up.
   const syncScroll = (from: HTMLDivElement | null, to: HTMLDivElement | null) => {
@@ -135,8 +159,8 @@ export function PreviewModal(props: {
             <button
               type="button"
               className={effectiveMode === 'slider' ? 'is-active' : ''}
-              disabled={!sameSize}
-              title={sameSize ? 'Drag to compare' : 'Available when dimensions are unchanged'}
+              disabled={original === null}
+              title="Drag across the image to compare"
               onClick={() => setMode('slider')}
             >
               Slider
@@ -198,25 +222,43 @@ export function PreviewModal(props: {
         <div className="compare compare--slider" ref={compareRef}>
           <div
             className={`slider-view backdrop--${backdrop}`}
+            ref={viewRef}
             onPointerMove={(e) => {
-              if (e.buttons !== 1) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              setSplit(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)));
+              if (e.buttons === 1) moveSplit(e.clientX);
             }}
             onPointerDown={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setSplit(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)));
+              e.currentTarget.setPointerCapture(e.pointerId);
+              moveSplit(e.clientX);
             }}
           >
-            <div className="slider-view__stack" style={zoom === 'fit' ? undefined : { width: result.width * zoom, height: result.height * zoom }}>
-              <img src={item.outputUrl} alt="Optimized" className="slider-view__img" />
+            <div className="slider-view__stack" ref={stackRef}>
+              {/* The original sizes the view; the optimised image is placed on top of it. */}
               <img
                 src={original!.url}
                 alt="Original"
-                className="slider-view__img slider-view__img--top"
-                style={{ clipPath: `inset(0 ${(1 - split) * 100}% 0 0)` }}
+                className="slider-view__base"
+                style={{
+                  width: Math.max(1, original!.width * sliderScale),
+                  height: Math.max(1, original!.height * sliderScale),
+                  clipPath: `inset(0 ${(1 - split) * 100}% 0 0)`,
+                }}
               />
-              <div className="slider-view__handle" style={{ left: `${split * 100}%` }} />
+              <div className="slider-view__layer" style={{ clipPath: `inset(0 0 0 ${split * 100}%)` }}>
+                <img
+                  src={item.outputUrl}
+                  alt="Optimized"
+                  className="slider-view__overlay"
+                  style={{
+                    left: `${(place.x / place.sourceWidth) * 100}%`,
+                    top: `${(place.y / place.sourceHeight) * 100}%`,
+                    width: `${(place.width / place.sourceWidth) * 100}%`,
+                    height: `${(place.height / place.sourceHeight) * 100}%`,
+                  }}
+                />
+              </div>
+              <div className="slider-view__handle" style={{ left: `${split * 100}%` }}>
+                <span className="slider-view__knob" />
+              </div>
             </div>
             <span className="slider-view__label slider-view__label--left">Original · {formatBytes(original!.bytes)}</span>
             <span className="slider-view__label slider-view__label--right">

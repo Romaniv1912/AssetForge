@@ -114,4 +114,27 @@ describe('processImage pipeline', () => {
     });
     await expect(promise).rejects.toBeInstanceOf(CancelledError);
   });
+
+  it('records where the output lies in the source (for before/after overlays)', async () => {
+    const { findContentBounds } = await import('../src/image/crop/smart-crop');
+    const source = transparentIllustration(400, 300);
+    const bounds = findContentBounds(source)!;
+    const bytes = await encodePng(source);
+
+    const padded = await processImage(bytes, options({ crop: { enabled: true, padding: 8 } }));
+    expect(padded.placement).toMatchObject({ sourceWidth: 400, sourceHeight: 300, x: bounds.x - 8, y: bounds.y - 8 });
+    expect(padded.placement.width).toBeCloseTo(bounds.width + 16, 6);
+
+    // Resized to half: 8 output px of padding = 16 source px.
+    const half = await processImage(
+      bytes,
+      options({ crop: { enabled: true, padding: 8 }, resize: { enabled: true, maxWidth: Math.round(bounds.width / 2) + 16, maxHeight: 10_000 } }),
+    );
+    const scale = (half.width - 16) / bounds.width;
+    expect(half.placement.x).toBeCloseTo(bounds.x - 8 / scale, 3);
+    expect(half.placement.width).toBeCloseTo(half.width / scale, 3);
+
+    const untouched = await processImage(fixture('coffee.png'), options());
+    expect(untouched.placement).toEqual({ sourceWidth: 600, sourceHeight: 400, x: 0, y: 0, width: 600, height: 400 });
+  });
 });

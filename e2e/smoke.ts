@@ -154,6 +154,17 @@ async function main() {
   await frame.getByRole('button', { name: 'Details' }).click();
   await frame.getByText('Background removed: yes').waitFor();
   await page.screenshot({ path: `${shots}06-background-removed.png` });
+  // Slider comparison works for cropped/resized results too.
+  const sliderButton = frame.getByRole('button', { name: 'Slider' });
+  await frame.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.segmented button:nth-child(2)')?.disabled);
+  await sliderButton.click();
+  const stack = frame.locator('.slider-view__stack');
+  await stack.waitFor();
+  const box = await stack.boundingBox();
+  assert(box && box.width > 100 && box.height > 100, 'slider view is sized to the original');
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height / 2);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: `${shots}06b-slider.png` });
 
   // Figma dark theme: Figma injects its tokens and the figma-dark class into the iframe.
   await frame.evaluate(() => {

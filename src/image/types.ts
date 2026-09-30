@@ -163,6 +163,12 @@ export interface ProcessedImage {
   backgroundRemoved: boolean;
   cropped: boolean;
   resized: boolean;
+  /**
+   * Where the output lies in the (orientation-corrected) source image, in
+   * source pixels. Lets viewers overlay output and original exactly even after
+   * cropping, padding and resizing. May extend beyond the source (padding).
+   */
+  placement: { sourceWidth: number; sourceHeight: number; x: number; y: number; width: number; height: number };
   timings: StageTimings;
   warnings: string[];
 }

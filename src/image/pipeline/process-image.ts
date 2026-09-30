@@ -100,6 +100,11 @@ export async function processImage(
     leave('removing-background');
   }
 
+  // Geometry of the output inside the source, for exact before/after overlays.
+  const sourceWidth = image.width;
+  const sourceHeight = image.height;
+  let region = { x: 0, y: 0, width: image.width, height: image.height };
+
   // 4. Crop transparent bounds
   let cropped = false;
   const padding = options.crop.enabled ? Math.max(0, Math.round(options.crop.padding)) : 0;
@@ -115,6 +120,7 @@ export async function processImage(
     }
     if (bounds.width !== image.width || bounds.height !== image.height) {
       image = cropImage(image, bounds);
+      region = { ...bounds };
       cropped = true;
     }
     leave('cropping');
@@ -132,7 +138,18 @@ export async function processImage(
       image = await resizeImage(image, target);
       resized = true;
     }
-    if (applyPadding) image = padImage(image, padding);
+    if (applyPadding) {
+      // Padding is added in output pixels; convert it back to source pixels.
+      const scaleX = image.width / region.width;
+      const scaleY = image.height / region.height;
+      region = {
+        x: region.x - padding / scaleX,
+        y: region.y - padding / scaleY,
+        width: region.width + (2 * padding) / scaleX,
+        height: region.height + (2 * padding) / scaleY,
+      };
+      image = padImage(image, padding);
+    }
     leave('resizing');
   }
 
@@ -216,6 +233,7 @@ export async function processImage(
     backgroundRemoved,
     cropped,
     resized,
+    placement: { sourceWidth, sourceHeight, ...region },
     timings,
     warnings,
   };

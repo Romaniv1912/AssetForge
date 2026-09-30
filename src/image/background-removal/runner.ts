@@ -34,11 +34,6 @@ export function isOutOfMemory(error: unknown): boolean {
   return /bad_alloc|out of memory|Out of memory|Cannot enlarge memory|memory access out of bounds|ERROR_CODE: 6/i.test(text);
 }
 
-/** Credentials for downloading gated models. */
-export interface ModelAccess {
-  huggingFaceToken?: string;
-}
-
 export interface SegmentationRunner {
   run(
     modelId: string,
@@ -46,6 +41,5 @@ export interface SegmentationRunner {
     width: number,
     height: number,
     onProgress?: (progress: StageProgress) => void,
-    access?: ModelAccess,
   ): Promise<SegmentationMask>;
 }

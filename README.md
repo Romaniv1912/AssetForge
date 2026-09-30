@@ -205,31 +205,21 @@ bounded concurrency, per-item failure isolation and cancellation.
 Background removal is **real, local ML inference** with ONNX Runtime Web in a
 dedicated worker. Nothing is uploaded.
 
-| Model | Best for | Download | Backend | Licence |
-| --- | --- | --- | --- | --- |
-| `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net, 8-bit | general purpose, works on any machine | ≈ 44 MB | CPU or GPU | bria-rmbg-1.4, non-commercial |
-| `rmbg-2.0` — BRIA RMBG-2.0 (BiRefNet architecture), fp16 | best quality: hair, fur, fine edges | ≈ 514 MB | **WebGPU only** | CC BY-NC 4.0; **gated** — needs a Hugging Face read token |
-| `birefnet-lite` — BiRefNet lite (Swin-T), fp16 | very clean edges, MIT licence | ≈ 115 MB | **WebGPU only** | MIT |
-| `modnet` — MODNet, 8-bit | portraits / avatars, fastest | ≈ 7 MB | CPU or GPU | Apache-2.0 |
+| Model | Download | Notes | Licence |
+| --- | --- | --- | --- |
+| `rmbg-1.4` (default) — BRIA RMBG-1.4, IS-Net, 8-bit | ≈ 44 MB | fast, works on any machine | bria-rmbg-1.4, non-commercial |
+| `rmbg-1.4-full` — same model, full precision (fp32) | ≈ 176 MB | cleaner edges and fewer mistakes, ~2× slower | bria-rmbg-1.4, non-commercial |
 
-AssetForge is an open, non-commercial project, so non-commercial model licences
-are fine here; if you fork it for a commercial product, use `birefnet-lite` or
-`modnet`, or license the BRIA models.
+AssetForge is an open, non-commercial project, so the non-commercial RMBG
+licence is fine here.
 
-**Why some models are WebGPU-only.** 1024² transformer models (BiRefNet,
-RMBG-2.0) need more activation memory than the WebAssembly CPU backend can
-address (4 GB), which surfaces as `OrtRun() … std::bad_alloc`. They are
-therefore only started when WebGPU is available. If a model cannot run (no
-WebGPU, out of memory) AssetForge automatically falls back to RMBG-1.4 for the
-rest of the session and shows a note on the affected results — the batch never
-fails because of it.
-
-**RMBG-2.0 access.** The repository is gated by BRIA: sign in at
-huggingface.co, accept the licence on
-[briaai/RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0), create a *read*
-access token and paste it into *Background → Hugging Face token*. The token is
-stored with the plugin settings on your computer and is only sent to
-huggingface.co.
+**Why not RMBG-2.0 / BiRefNet?** They are stronger, but 1024² transformer
+models need WebGPU: on the WebAssembly CPU backend their activations exceed the
+4 GB heap (`OrtRun() … std::bad_alloc`). Figma creates the plugin window as a
+non-secure context, where browsers do not expose WebGPU, so these models cannot
+run inside the Figma plugin. The registry still supports WebGPU-only models
+(`requiresWebGpu`) with an automatic `fallback`, so they can be re-added via
+`registerSegmentationModel()` if the UI is ever served from an https origin.
 
 How it works:
 
@@ -240,8 +230,8 @@ How it works:
    session serves the entire batch; the model is never reloaded per image.
    Downloads are served from the HTTP cache afterwards (and from Cache Storage
    where the browser allows it).
-2. **Inference** at the model's native resolution (1024² for BiRefNet and RMBG,
-   short side 512 for MODNet), WebGPU when an adapter exists, WASM SIMD otherwise.
+2. **Inference** at the model's native resolution (1024²), WebGPU when an
+   adapter exists, WASM SIMD otherwise.
 3. **Edge refinement** — a colour *Fast Guided Filter* (He & Sun, 2015): the
    linear model is solved at model resolution and applied at full resolution,
    so the matte snaps to real edges (hair, fur, outlines) instead of being a
@@ -431,9 +421,9 @@ RMBG-1.4 model:
 curl -L -o rmbg.onnx https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx
 ASSETFORGE_MODEL_PATH=$PWD/rmbg.onnx pnpm test background-removal
 
-# BiRefNet lite (fp32 CPU file):
-curl -L -o birefnet.onnx https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model.onnx
-ASSETFORGE_MODEL_ID=birefnet-lite ASSETFORGE_MODEL_PATH=$PWD/birefnet.onnx pnpm test background-removal
+# Full-precision RMBG-1.4:
+curl -L -o rmbg-full.onnx https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx
+ASSETFORGE_MODEL_ID=rmbg-1.4-full ASSETFORGE_MODEL_PATH=$PWD/rmbg-full.onnx pnpm test background-removal
 ```
 
 `pnpm run test:e2e` (after `pnpm run build`) loads `dist/index.html` into an
@@ -464,7 +454,7 @@ worker (CDN downloads are routed to local files). Screenshots are saved to
 ## Limitations
 
 - **Real-model verification:** background removal was verified end-to-end with
-  a tiny ONNX model and ground-truth mattes; the BiRefNet/RMBG-1.4/MODNet downloads could
+  a tiny ONNX model and ground-truth mattes; the RMBG-1.4 downloads could
   not be exercised in the build environment (no access to Hugging Face). Run the
   optional integration test above to validate your model choice.
 - AVIF encoding is single-threaded (no `SharedArrayBuffer` in the Figma iframe)

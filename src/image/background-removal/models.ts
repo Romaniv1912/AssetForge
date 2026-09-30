@@ -46,8 +46,6 @@ export interface SegmentationModelSpec {
   requiresWebGpu?: boolean;
   /** Model used instead when this one cannot run (no WebGPU, out of memory). */
   fallback?: string;
-  /** Download needs a Hugging Face token (gated repository). */
-  gated?: { acceptUrl: string };
 }
 
 const registry: SegmentationModelSpec[] = [
@@ -81,59 +79,6 @@ const registry: SegmentationModelSpec[] = [
     outputNormalization: 'minmax',
     performanceNote: '≈176 MB download (cached), about twice as slow as the 8-bit version, works without a GPU.',
     fallback: 'rmbg-1.4',
-  },
-  {
-    id: 'rmbg-2.0',
-    label: 'RMBG-2.0 (best quality, WebGPU)',
-    description:
-      'BRIA RMBG-2.0: BiRefNet architecture trained on BRIA\'s licensed data — the strongest open model for hair, fur and fine edges.',
-    url: 'https://huggingface.co/briaai/RMBG-2.0/resolve/main/onnx/model_fp16.onnx',
-    approxBytes: 514_000_000,
-    performanceNote:
-      'Needs WebGPU and ≈514 MB download (cached). Gated on Hugging Face: accept the licence and add a read token below.',
-    license: 'CC BY-NC 4.0 (non-commercial)',
-    licenseUrl: 'https://huggingface.co/briaai/RMBG-2.0',
-    commercialUse: 'requires-agreement',
-    input: { kind: 'fixed', width: 1024, height: 1024 },
-    mean: [0.485, 0.456, 0.406],
-    std: [0.229, 0.224, 0.225],
-    outputNormalization: 'auto',
-    requiresWebGpu: true,
-    fallback: 'rmbg-1.4',
-    gated: { acceptUrl: 'https://huggingface.co/briaai/RMBG-2.0' },
-  },
-  {
-    id: 'birefnet-lite',
-    label: 'BiRefNet lite (WebGPU)',
-    description:
-      'BiRefNet lite (Swin-T, 1024²): very clean edges and fine detail (hair, fur, thin structures). MIT licensed.',
-    url: 'https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model_fp16.onnx',
-    approxBytes: 115_000_000,
-    performanceNote: 'Needs WebGPU, ≈115 MB download (cached).',
-    license: 'MIT',
-    licenseUrl: 'https://github.com/ZhengPeng7/BiRefNet/blob/main/LICENSE',
-    commercialUse: 'allowed',
-    input: { kind: 'fixed', width: 1024, height: 1024 },
-    mean: [0.485, 0.456, 0.406],
-    std: [0.229, 0.224, 0.225],
-    outputNormalization: 'sigmoid',
-    requiresWebGpu: true,
-    fallback: 'rmbg-1.4',
-  },
-  {
-    id: 'modnet',
-    label: 'MODNet (portraits, fastest)',
-    description: 'MODNet portrait matting. Small and fast, Apache-2.0; designed for people/avatars only.',
-    url: 'https://huggingface.co/Xenova/modnet/resolve/main/onnx/model_quantized.onnx',
-    approxBytes: 6_628_732,
-    license: 'Apache-2.0',
-    licenseUrl: 'https://github.com/ZHKKKe/MODNet/blob/master/LICENSE',
-    commercialUse: 'allowed',
-    input: { kind: 'shortest-edge', size: 512, multiple: 32, maxEdge: 1024 },
-    mean: [0.5, 0.5, 0.5],
-    std: [0.5, 0.5, 0.5],
-    outputNormalization: 'none',
-    performanceNote: '≈7 MB download, the fastest option.',
   },
 ];
 

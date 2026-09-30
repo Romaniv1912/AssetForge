@@ -24,7 +24,6 @@ function serve(port: MessagePort): void {
         request.width,
         request.height,
         (progress) => reply({ type: 'SEGMENT_PROGRESS', requestId: request.requestId, progress }),
-        { huggingFaceToken: request.huggingFaceToken },
       );
       reply(
         {

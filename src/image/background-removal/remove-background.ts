@@ -27,7 +27,7 @@ const ALPHA_CEIL = 252 / 255;
  */
 export async function removeBackground(
   image: RgbaImage,
-  options: Pick<BackgroundRemovalOptions, 'model' | 'refineEdges' | 'decontaminateColors' | 'huggingFaceToken'>,
+  options: Pick<BackgroundRemovalOptions, 'model' | 'refineEdges' | 'decontaminateColors'>,
   ctx: RemoveBackgroundContext,
 ): Promise<RgbaImage> {
   const { width: W, height: H } = image;
@@ -52,9 +52,7 @@ export async function removeBackground(
     const tensor = toTensor(modelInput, spec);
     throwIfCancelled(ctx.cancel);
     try {
-      raw = await ctx.runner.run(spec.id, tensor, inputSize.width, inputSize.height, ctx.onProgress, {
-        huggingFaceToken: options.huggingFaceToken,
-      });
+      raw = await ctx.runner.run(spec.id, tensor, inputSize.width, inputSize.height, ctx.onProgress);
       break;
     } catch (error) {
       if (!(error instanceof ModelUnavailableError) || !spec.fallback) throw error;

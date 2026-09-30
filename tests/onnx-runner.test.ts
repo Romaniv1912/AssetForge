@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import './helpers/setup';
-import { registerSegmentationModel } from '../src/image/background-removal/models';
+import { getModelSpec as getModelSpecForTest, registerSegmentationModel } from '../src/image/background-removal/models';
 import { OnnxSegmentationRunner } from '../src/image/background-removal/onnx-runner';
 import { decodeImage } from '../src/image/decode/decode';
 import { processImage } from '../src/image/pipeline/process-image';
@@ -149,7 +149,8 @@ describe('ONNX Runtime segmentation runner', () => {
         return new Uint8Array();
       },
     });
-    await expect(runner.run('birefnet-lite', new Float32Array(3), 1, 1)).rejects.toBeInstanceOf(ModelUnavailableError);
+    registerSegmentationModel({ ...getModelSpecForTest('rmbg-1.4'), id: 'gpu-only-runner-test', requiresWebGpu: true });
+    await expect(runner.run('gpu-only-runner-test', new Float32Array(3), 1, 1)).rejects.toBeInstanceOf(ModelUnavailableError);
     expect(downloads).toBe(0);
   });
 
@@ -186,35 +187,4 @@ describe('ONNX Runtime segmentation runner', () => {
     expect(runs).toBe(1);
   });
 
-  it('sends the Hugging Face token only to huggingface.co', async () => {
-    const { fetchWithCache } = await import('../src/image/background-removal/onnx-runner');
-    const seen: Array<{ host: string; auth: string | null }> = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (url: string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      seen.push({ host: new URL(url).hostname, auth: headers.get('authorization') });
-      return new Response(new Uint8Array([1, 2, 3]));
-    }) as typeof fetch;
-    try {
-      await fetchWithCache('https://huggingface.co/briaai/RMBG-2.0/resolve/main/onnx/model_fp16.onnx', 3, 'model', undefined, 'removing-background', { huggingFaceToken: ' hf_secret ' });
-      await fetchWithCache('https://cdn.jsdelivr.net/npm/x/y.wasm', 3, 'runtime', undefined, 'removing-background', { huggingFaceToken: 'hf_secret' });
-    } finally {
-      globalThis.fetch = original;
-    }
-    expect(seen).toEqual([
-      { host: 'huggingface.co', auth: 'Bearer hf_secret' },
-      { host: 'cdn.jsdelivr.net', auth: null },
-    ]);
-  });
-
-  it('explains gated downloads (HTTP 401/403)', async () => {
-    const { fetchWithCache } = await import('../src/image/background-removal/onnx-runner');
-    const original = globalThis.fetch;
-    globalThis.fetch = (async () => new Response('denied', { status: 401 })) as typeof fetch;
-    try {
-      await expect(fetchWithCache('https://huggingface.co/briaai/RMBG-2.0/x.onnx', 1, 'background model')).rejects.toThrow(/gated/);
-    } finally {
-      globalThis.fetch = original;
-    }
-  });
 });

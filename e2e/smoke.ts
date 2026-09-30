@@ -61,7 +61,7 @@ async function main() {
   // Background removal off: it needs to download the model, which CI may not allow.
   await page.addInitScript(() => {
     (window as unknown as { __initialOptions: unknown }).__initialOptions = {
-      backgroundRemoval: { enabled: false, model: 'birefnet-lite', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
+      backgroundRemoval: { enabled: false, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
       crop: { enabled: true, padding: 8, alphaThreshold: 0 },
       resize: { enabled: true, maxWidth: 1024, maxHeight: 1024, preserveAspectRatio: true, allowUpscale: false },
       compression: { format: 'original', preset: 'high', allowAvifInAuto: true, custom: { quality: 80, lossless: false } },
@@ -137,9 +137,7 @@ async function main() {
   await frame.getByRole('tab', { name: 'Settings' }).click();
   await frame.getByText('Remove background', { exact: true }).click();
   await frame.getByText(/Runs locally/).waitFor();
-  // RMBG-2.0 needs WebGPU (absent in headless Chromium): exercises the automatic fallback.
-  await frame.getByLabel('Model').selectOption('rmbg-2.0');
-  await frame.getByText('Hugging Face token (read)').waitFor();
+  await frame.getByLabel('Model').selectOption('rmbg-1.4-full');
   await frame.locator('.app__body').evaluate((el) => el.scrollTo(0, 200));
   await page.screenshot({ path: `${shots}00-settings-rmbg2.png` });
   await frame.getByRole('button', { name: /Process 4 images/ }).click();
@@ -147,7 +145,6 @@ async function main() {
   const statusesBg = await frame.locator('.status').allTextContents();
   console.log('Statuses (background removal):', statusesBg.join(', '), '| downloads:', JSON.stringify(hits));
   assert(statusesBg.filter((s) => s === 'Completed').length === 3, 'three images completed with background removal');
-  await frame.getByText(/was used instead/).first().waitFor();
   assert(hits.model === 1, 'model downloaded exactly once for the whole batch');
   assert(hits.runtime >= 1, 'ONNX Runtime binary fetched');
   await frame.locator('.result__thumb').first().click();

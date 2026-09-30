@@ -39,7 +39,6 @@ export type SegmentationRequest = {
   tensor: Float32Array;
   width: number;
   height: number;
-  huggingFaceToken?: string;
 };
 
 export type SegmentationResponse =

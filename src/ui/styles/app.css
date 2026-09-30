@@ -91,6 +91,8 @@ body,
 #root {
   margin: 0;
   height: 100%;
+  /* Only the inner panels scroll — never the page itself (no double scrollbar). */
+  overflow: hidden;
 }
 
 body {
@@ -427,8 +429,6 @@ button.selection__row:hover {
   padding: 4px 8px;
   background: var(--bg-secondary);
   border-radius: var(--radius);
-  max-height: 120px;
-  overflow-y: auto;
 }
 
 .unsupported li {
@@ -516,14 +516,6 @@ button.selection__row:hover {
 .hint {
   margin: 0;
   color: var(--text-secondary);
-}
-
-.hint--warning {
-  color: var(--warning);
-}
-
-.hint--ok {
-  color: var(--success);
 }
 
 /* Checkbox (UI3: 16 px box, 4 px radius) */

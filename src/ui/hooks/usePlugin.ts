@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
 import { DEFAULT_OPTIONS } from '../../shared/constants';
 import type { ProcessingOptions, SelectionSnapshot } from '../../shared/types';
 import { onPluginMessage, postToPlugin } from '../lib/bridge';
@@ -15,7 +16,16 @@ export function usePlugin() {
   useEffect(() => {
     const unsubscribe = onPluginMessage((message) => {
       if (message.type === 'INIT') {
-        if (message.options) setOptions(message.options);
+        if (message.options) {
+          const stored = message.options;
+          // Settings saved by older versions may reference a model that was removed.
+          const modelExists = SEGMENTATION_MODELS.some((m) => m.id === stored.backgroundRemoval.model);
+          setOptions(
+            modelExists
+              ? stored
+              : { ...stored, backgroundRemoval: { ...stored.backgroundRemoval, model: DEFAULT_OPTIONS.backgroundRemoval.model } },
+          );
+        }
         loaded.current = true;
         setReady(true);
       } else if (message.type === 'SELECTION_CHANGED') {

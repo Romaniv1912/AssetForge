@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import './helpers/setup';
-import { DEFAULT_SEGMENTATION_MODEL, getModelSpec, modelInputSize, SEGMENTATION_MODELS } from '../src/image/background-removal/models';
+import { DEFAULT_SEGMENTATION_MODEL, getModelSpec, modelInputSize, registerSegmentationModel, SEGMENTATION_MODELS } from '../src/image/background-removal/models';
 import { normalizeMask, removeBackground, toTensor } from '../src/image/background-removal/remove-background';
 import { bilinearResize, boxBlur } from '../src/image/background-removal/refine';
 import { ModelUnavailableError, type SegmentationRunner } from '../src/image/background-removal/runner';
@@ -43,19 +43,11 @@ describe('background removal', () => {
       expect(['allowed', 'requires-agreement']).toContain(m.commercialUse);
     }
     expect(modelInputSize(getModelSpec('rmbg-1.4'), 3000, 2000)).toEqual({ width: 1024, height: 1024 });
-    const birefnet = getModelSpec('birefnet-lite');
-    expect(birefnet.commercialUse).toBe('allowed');
-    expect(birefnet.outputNormalization).toBe('sigmoid');
-    expect(birefnet.mean).toEqual([0.485, 0.456, 0.406]);
-    expect(birefnet.requiresWebGpu).toBe(true);
-    expect(birefnet.fallback).toBe('rmbg-1.4');
-    const rmbg2 = getModelSpec('rmbg-2.0');
-    expect(rmbg2.gated?.acceptUrl).toMatch(/briaai\/RMBG-2\.0/);
-    expect(rmbg2.requiresWebGpu).toBe(true);
+    const full = getModelSpec('rmbg-1.4-full');
+    expect(full.url).toMatch(/onnx\/model\.onnx$/);
+    expect(full.requiresWebGpu).toBeFalsy();
     expect(DEFAULT_SEGMENTATION_MODEL).toBe('rmbg-1.4');
-    const modnet = modelInputSize(getModelSpec('modnet'), 3000, 2000);
-    expect(modnet.height).toBe(512);
-    expect(modnet.width % 32).toBe(0);
+    expect(SEGMENTATION_MODELS.map((m) => m.id)).toEqual(['rmbg-1.4', 'rmbg-1.4-full']);
   });
 
   it('normalises input tensors and model outputs', () => {
@@ -76,8 +68,8 @@ describe('background removal', () => {
   it('produces a soft matte that follows the true object edge', async () => {
     const { image, alpha } = objectOnBackground(320, 240);
     const runner = groundTruthRunner(alpha, 320, 240, 2);
-    const refined = await removeBackground(image, { model: 'modnet', refineEdges: true, decontaminateColors: false }, { runner });
-    const plain = await removeBackground(image, { model: 'modnet', refineEdges: false, decontaminateColors: false }, { runner });
+    const refined = await removeBackground(image, { model: 'rmbg-1.4', refineEdges: true, decontaminateColors: false }, { runner });
+    const plain = await removeBackground(image, { model: 'rmbg-1.4', refineEdges: false, decontaminateColors: false }, { runner });
     const errRefined = meanAbsError(alpha, refined.data);
     const errPlain = meanAbsError(alpha, plain.data);
     expect(errRefined).toBeLessThan(0.02);
@@ -112,7 +104,7 @@ describe('background removal', () => {
   it('keeps existing transparency (multiplies with the model matte)', async () => {
     const image = transparentIllustration(200, 150);
     const ones = new Float32Array(200 * 150).fill(1);
-    const out = await removeBackground(image, { model: 'modnet', refineEdges: false, decontaminateColors: false }, { runner: groundTruthRunner(ones, 200, 150, 0) });
+    const out = await removeBackground(image, { model: 'rmbg-1.4', refineEdges: false, decontaminateColors: false }, { runner: groundTruthRunner(ones, 200, 150, 0) });
     for (let p = 3; p < image.data.length; p += 4) expect(out.data[p]!).toBeLessThanOrEqual(image.data[p]! + 1);
   });
 
@@ -146,14 +138,14 @@ describe('background removal', () => {
     const bytes = await encodePng(objectOnBackground(64, 64).image);
     const empty = groundTruthRunner(new Float32Array(64 * 64), 64, 64, 0);
     await expect(
-      processImage(bytes, options({ backgroundRemoval: { enabled: true, model: 'modnet' } }), { segmentation: empty }),
+      processImage(bytes, options({ backgroundRemoval: { enabled: true, model: 'rmbg-1.4' } }), { segmentation: empty }),
     ).rejects.toThrow(/no foreground object was detected/);
   });
 
   // Real-model integration test. Download a model (see README) and set
   // ASSETFORGE_MODEL_PATH=/path/to/model_quantized.onnx (RMBG-1.4) to run it.
   // ASSETFORGE_MODEL_ID selects the registry entry the file belongs to (default rmbg-1.4,
-  // e.g. birefnet-lite with the fp32 onnx/model.onnx file).
+  // e.g. rmbg-1.4-full with the fp32 onnx/model.onnx file).
   const modelPath = process.env.ASSETFORGE_MODEL_PATH;
   const modelId = process.env.ASSETFORGE_MODEL_ID ?? 'rmbg-1.4';
   it.runIf(modelPath && existsSync(modelPath))('a real segmentation model separates a portrait from its background', async () => {
@@ -182,17 +174,24 @@ describe('background removal', () => {
     const runner: SegmentationRunner = {
       async run(modelId, tensor, w, h) {
         calls.push(modelId);
-        if (modelId === 'birefnet-lite') throw new ModelUnavailableError('BiRefNet lite needs WebGPU', modelId);
+        if (modelId === 'gpu-only-test') throw new ModelUnavailableError('GPU-only test model needs WebGPU', modelId);
         return truth.run(modelId, tensor, w, h);
       },
     };
-    const opts = options({ backgroundRemoval: { enabled: true, model: 'birefnet-lite', skipIfTransparent: false }, compression: { format: 'png' } });
+    registerSegmentationModel({
+      ...getModelSpec('rmbg-1.4'),
+      id: 'gpu-only-test',
+      label: 'GPU-only test model',
+      requiresWebGpu: true,
+      fallback: 'rmbg-1.4',
+    });
+    const opts = options({ backgroundRemoval: { enabled: true, model: 'gpu-only-test', skipIfTransparent: false }, compression: { format: 'png' } });
     const first = await processImage(bytes, opts, { segmentation: runner });
     const second = await processImage(bytes, opts, { segmentation: runner });
     expect(first.backgroundRemoved).toBe(true);
     expect(first.warnings.join(' ')).toMatch(/RMBG-1\.4 .* was used instead/);
     expect(second.backgroundRemoved).toBe(true);
-    expect(calls).toEqual(['birefnet-lite', 'rmbg-1.4', 'rmbg-1.4']);
+    expect(calls).toEqual(['gpu-only-test', 'rmbg-1.4', 'rmbg-1.4']);
   });
 
   it('clears background specks left by the model but keeps soft edges (regression: blue specks)', async () => {

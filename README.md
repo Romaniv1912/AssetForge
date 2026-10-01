@@ -252,6 +252,16 @@ artifacts while upscaling ×4.
 
   Inputs over 1 MP are skipped with a warning, and a failure never fails the
   image: the enhance step is skipped with a warning.
+- **Soft images:** some images hold less detail than their size suggests,
+  because they were upscaled before or are blurry. Such images are detected
+  by down-and-up SSIM ≥ 0.985: sharp photos and illustrations score
+  0.91–0.98. They are first reduced to their real detail level (½ or ¼), so
+  the model restores edges instead of preserving the blur, and it runs 4–16×
+  faster. This is the "Recover detail in soft images" option, on by default.
+- **Transparency:** colour under transparent pixels is filled from nearby
+  visible pixels before inference (otherwise the model draws halos), and the
+  alpha channel is upscaled by the model as a grey image, so cut-out edges stay
+  crisp.
 - **How it runs:** in tiles of 192 px with 16 px of context, so memory stays
   bounded. Seams are invisible (mean difference to an untiled run ≈ 0.08/255).
   Alpha is resized separately.

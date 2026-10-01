@@ -67,6 +67,12 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
                 set('enhance', { keepSize: mode === 'keep-size', onlyWhenSmaller: mode === 'upscale-small' })
               }
             />
+            <Checkbox
+              label="Recover detail in soft images"
+              hint="Images that were upscaled before (or are blurry) are first reduced to their real detail level, so the model sharpens instead of keeping the blur. Also faster."
+              checked={enhance.detectSoftness !== false}
+              onChange={(detectSoftness) => set('enhance', { detectSoftness })}
+            />
             <p className="hint">
               {enhanceModel.label}: runs locally. {enhanceModel.performanceNote}{' '}
               {cacheStatus.hosted ? '' : `The model is downloaded once per plugin launch: ${cacheStatus.reason}. `}

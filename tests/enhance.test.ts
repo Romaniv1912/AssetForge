@@ -8,7 +8,8 @@ import { encodeJpeg, encodePng, resample } from '../src/image/codecs';
 import { cropImage } from '../src/image/crop/smart-crop';
 import { decodeImage } from '../src/image/decode/decode';
 import { getEnhanceModelSpec } from '../src/image/enhance/models';
-import { aiUpscale } from '../src/image/enhance/upscale';
+import { detailFactor } from '../src/image/enhance/softness';
+import { aiUpscale, bleedColours } from '../src/image/enhance/upscale';
 import { compareImages } from '../src/image/metrics/ssim';
 import { enhanceDecision, processImage } from '../src/image/pipeline/process-image';
 import type { RgbaImage } from '../src/image/types';
@@ -153,6 +154,52 @@ describe('AI upscale (Real-ESRGAN general x4v3, real model)', () => {
     const out = (await decodeImage(result.data)).image;
     console.log(`keep-size blockiness: JPEG ${blockiness(input).toFixed(2)}, enhanced ${blockiness(out).toFixed(2)}, clean ${blockiness(clean).toFixed(2)}`);
     expect(blockiness(out)).toBeLessThan(blockiness(input) * 0.6);
+  });
+});
+
+describe('soft images', () => {
+  const o = { premultiply: true, linearRGB: true } as const;
+  const soften = async (image: RgbaImage, d: number) =>
+    resample(await resample(image, Math.round(image.width / d), Math.round(image.height / d), { filter: 'lanczos3', ...o }), image.width, image.height, {
+      filter: 'catrom',
+      ...o,
+    });
+
+  it('sharp images keep their size; upscaled-before images are detected', async () => {
+    for (const name of ['chelsea.png', 'astronaut.png', 'logo.png', 'text.png']) {
+      const { image } = await decodeImage(fixture(name));
+      expect(await detailFactor(image, 4), name).toBe(1);
+    }
+    const { image } = await decodeImage(fixture('astronaut.png'));
+    expect(await detailFactor(await soften(image, 2), 4)).toBe(2);
+    // Detection is conservative (a false positive would destroy real detail).
+    expect(await detailFactor(await soften(image, 4), 4)).toBeGreaterThanOrEqual(2);
+    expect(await detailFactor(await soften(image, 4), 2)).toBe(2); // limited by the Resize box
+  });
+
+  it('pipeline starts the AI upscale from the real detail level', async () => {
+    const { image } = await decodeImage(fixture('astronaut.png'));
+    const soft = await soften(cropImage(image, { x: 128, y: 32, width: 192, height: 192 }), 2);
+    const result = await processImage(
+      await encodePng(soft),
+      options({ enhance: { enabled: true, keepSize: true }, compression: { format: 'png', preset: 'balanced' } }),
+      { enhancer: runner },
+    );
+    expect([result.width, result.height]).toEqual([192, 192]);
+    expect(result.warnings.join(' ')).toMatch(/holds about 96×96 px of detail/);
+    const out = (await decodeImage(result.data)).image;
+    console.log(`soft keep-size edge energy: input ${edgeEnergy(soft).toFixed(2)}, enhanced ${edgeEnergy(out).toFixed(2)}`);
+    expect(edgeEnergy(out)).toBeGreaterThan(edgeEnergy(soft) * 1.2);
+  });
+
+  it('fills colour under transparency from nearby visible pixels', () => {
+    const image = blank(8, 8, [0, 0, 0, 0]);
+    for (let i = 0; i < 4; i++) image.data.set([0, 120, 255, 255], (3 * 8 + 3 + (i % 2) + (i > 1 ? 8 : 0)) * 4);
+    const filled = bleedColours(image);
+    // A transparent corner now carries the visible blue instead of black...
+    expect(Array.from(filled.data.subarray(0, 4))).toEqual([0, 120, 255, 0]);
+    // ...and visible pixels are unchanged.
+    expect(Array.from(filled.data.subarray((3 * 8 + 3) * 4, (3 * 8 + 3) * 4 + 4))).toEqual([0, 120, 255, 255]);
   });
 });
 

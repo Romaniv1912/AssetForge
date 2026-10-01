@@ -106,6 +106,11 @@ export interface EnhanceOptions {
    * changing dimensions. Overrides `onlyWhenSmaller`.
    */
   keepSize?: boolean;
+  /**
+   * Detect images that hold less detail than their size (upscaled or soft)
+   * and start the AI upscale from their real detail level. Default on.
+   */
+  detectSoftness?: boolean;
 }
 
 export interface ProcessingOptions {

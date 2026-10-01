@@ -1,7 +1,5 @@
 import type * as Ort from 'onnxruntime-web';
 import type { StageProgress } from '../types';
-import { getEnhanceModelSpec } from '../enhance/models';
-import type { EnhanceOutput, EnhanceRunner } from '../enhance/runner';
 import { getModelSpec } from './models';
 import { isOutOfMemory, ModelUnavailableError, type SegmentationMask, type SegmentationRunner } from './runner';
 
@@ -21,26 +19,15 @@ export interface OnnxRunnerConfig {
    * Browser and Node hosts differ (bundle vs. node_modules), so the host decides.
    */
   loadRuntime: (onProgress?: (p: StageProgress) => void) => Promise<OrtRuntime>;
-  /** Downloads (or reads from cache) a model file. `label` names it in progress messages. */
-  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void, label?: string) => Promise<Uint8Array>;
-}
-
-/** What a session needs to know about a model (segmentation or enhance). */
-interface SessionSource {
-  id: string;
-  label: string;
-  url: string;
-  approxBytes: number;
-  requiresWebGpu?: boolean;
-  webgpu?: { url: string; approxBytes: number };
+  /** Downloads (or reads from cache) a model file. */
+  loadModel: (url: string, approxBytes: number, onProgress?: (p: StageProgress) => void) => Promise<Uint8Array>;
 }
 
 /**
- * ONNX Runtime host for background segmentation and AI upscaling. One session
- * per model is created lazily and reused for every image (the model is never
- * reloaded per image); inference is serialised across both tasks.
+ * Background segmentation with ONNX Runtime. One session per model is created
+ * lazily and reused for every image (the model is never reloaded per image).
  */
-export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner {
+export class OnnxSegmentationRunner implements SegmentationRunner {
   private runtime: Promise<OrtRuntime> | undefined;
   private readonly sessions = new Map<string, Promise<Ort.InferenceSession>>();
   /** Models that proved unusable in this runtime (reported once, then skipped). */
@@ -64,7 +51,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner
     const task = this.queue.then(async () => {
       const known = this.unavailable.get(modelId);
       if (known) throw new ModelUnavailableError(known, modelId);
-      const session = await this.session(getModelSpec(modelId), onProgress, 'background model', 'removing-background');
+      const session = await this.session(modelId, onProgress);
       const { ort } = await this.runtime!;
       onProgress?.({ stage: 'removing-background', detail: 'Segmenting' });
       const input = new ort.Tensor('float32', tensor, [1, 3, height, width]);
@@ -99,48 +86,11 @@ export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner
     return task;
   }
 
-  /** Runs one 1×3×H×W tile through a super-resolution model. */
-  async enhance(
-    modelId: string,
-    tensor: Float32Array,
-    width: number,
-    height: number,
-    onProgress?: (p: StageProgress) => void,
-  ): Promise<EnhanceOutput> {
-    const task = this.queue.then(async () => {
-      const spec = getEnhanceModelSpec(modelId);
-      const session = await this.session(spec, onProgress, 'AI upscale model', 'enhancing');
-      const { ort } = await this.runtime!;
-      const input = new ort.Tensor('float32', tensor, [1, 3, height, width]);
-      let results: Ort.InferenceSession.OnnxValueMapType | undefined;
-      try {
-        results = await session.run({ [session.inputNames[0]!]: input });
-        const output = results[session.outputNames[0]!]!;
-        const dims = output.dims;
-        const data = new Float32Array((await output.getData()) as Float32Array);
-        return { data, width: Number(dims[dims.length - 1]), height: Number(dims[dims.length - 2]) };
-      } finally {
-        input.dispose();
-        for (const t of Object.values(results ?? {})) t.dispose();
-      }
-    });
-    this.queue = task.catch(() => undefined);
-    return task;
-  }
-
-  private session(
-    spec: SessionSource,
-    onProgress: ((p: StageProgress) => void) | undefined,
-    label: string,
-    stage: StageProgress['stage'],
-  ): Promise<Ort.InferenceSession> {
-    const modelId = spec.id;
-    // Downloads and initialisation are reported under the caller's stage.
-    const report = onProgress && ((p: StageProgress) => onProgress({ ...p, stage }));
+  private session(modelId: string, onProgress?: (p: StageProgress) => void): Promise<Ort.InferenceSession> {
     let pending = this.sessions.get(modelId);
     if (!pending) {
       pending = (async () => {
-        this.runtime ??= this.config.loadRuntime(report);
+        this.runtime ??= this.config.loadRuntime(onProgress);
         let runtime: OrtRuntime;
         try {
           runtime = await this.runtime;
@@ -148,6 +98,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner
           this.runtime = undefined;
           throw error;
         }
+        const spec = getModelSpec(modelId);
         const options = { graphOptimizationLevel: 'all' } as const;
         const gpu = runtime.executionProviders.includes('webgpu');
         if (!gpu && spec.requiresWebGpu) {
@@ -155,15 +106,15 @@ export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner
           this.unavailable.set(modelId, message);
           throw new ModelUnavailableError(message, modelId);
         }
-        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, report, label);
+        const cpuModel = () => this.config.loadModel(spec.url, spec.approxBytes, onProgress);
         if (gpu) {
           // GPU-specific variant (e.g. fp16) when the model provides one.
           const variant = spec.webgpu ?? { url: spec.url, approxBytes: spec.approxBytes };
           // Download errors (network, access) are reported as they are —
           // only a failure to *start* the model means it cannot run here.
-          const model = await this.config.loadModel(variant.url, variant.approxBytes, report, label);
+          const model = await this.config.loadModel(variant.url, variant.approxBytes, onProgress);
           try {
-            report?.({ stage, detail: 'Initialising model (WebGPU)' });
+            onProgress?.({ stage: 'removing-background', detail: 'Initialising model (WebGPU)' });
             return await runtime.ort.InferenceSession.create(model, { ...options, executionProviders: runtime.executionProviders });
           } catch (error) {
             if (spec.requiresWebGpu || isOutOfMemory(error)) {
@@ -177,7 +128,7 @@ export class OnnxSegmentationRunner implements SegmentationRunner, EnhanceRunner
           }
         }
         const model = await cpuModel();
-        report?.({ stage, detail: 'Initialising model' });
+        onProgress?.({ stage: 'removing-background', detail: 'Initialising model' });
         return runtime.ort.InferenceSession.create(model, { ...options, executionProviders: ['wasm'] });
       })();
       pending.catch(() => this.sessions.delete(modelId));

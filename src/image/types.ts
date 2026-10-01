@@ -29,7 +29,6 @@ export type CompressionPreset = 'maximum' | 'high' | 'balanced' | 'small' | 'cus
 export type ProcessingStage =
   | 'loading'
   | 'analyzing'
-  | 'enhancing'
   | 'removing-background'
   | 'cropping'
   | 'resizing'
@@ -89,32 +88,7 @@ export interface CompressionOptions {
   fullPalette?: boolean;
 }
 
-export interface EnhanceOptions {
-  /** AI upscaling (super-resolution) before background removal and resize. */
-  enabled: boolean;
-  /** Id of a model from the enhance model registry. */
-  model: string;
-  /**
-   * Only enhance images smaller than the Resize limits (the case where a
-   * plain resize would upscale or leave the image too small). When false,
-   * every image is enhanced and then resized back (sharpening/denoising).
-   */
-  onlyWhenSmaller: boolean;
-  /**
-   * Keep the original size: upscale with the model, then downscale back. The
-   * image gets sharper and cleaner (blur, noise, JPEG artifacts) without
-   * changing dimensions. Overrides `onlyWhenSmaller`.
-   */
-  keepSize?: boolean;
-  /**
-   * Detect images that hold less detail than their size (upscaled or soft)
-   * and start the AI upscale from their real detail level. Default on.
-   */
-  detectSoftness?: boolean;
-}
-
 export interface ProcessingOptions {
-  enhance: EnhanceOptions;
   backgroundRemoval: BackgroundRemovalOptions;
   crop: CropOptions;
   resize: ResizeOptions;
@@ -195,8 +169,6 @@ export interface ProcessedImage {
   analysis: ImageAnalysis;
   /** Every candidate the automatic selection measured. */
   candidates: CandidateResult[];
-  /** AI upscaling ran (factor applied before the later stages). */
-  enhanced: boolean;
   backgroundRemoved: boolean;
   cropped: boolean;
   resized: boolean;

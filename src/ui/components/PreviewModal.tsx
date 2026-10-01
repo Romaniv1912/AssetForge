@@ -300,7 +300,6 @@ export function PreviewModal(props: {
             <h4>Pipeline</h4>
             <ul>
               <li>Content: {result.analysis.contentType}{result.analysis.hasAlpha ? `, alpha (${result.analysis.alphaKind})` : ', opaque'}</li>
-              {result.enhanced && <li>AI upscaled: yes</li>}
               <li>Background removed: {result.backgroundRemoved ? 'yes' : 'no'}</li>
               <li>Cropped: {result.cropped ? 'yes' : 'no'} · Resized: {result.resized ? 'yes' : 'no'}</li>
               <li>

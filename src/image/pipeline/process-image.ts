@@ -6,15 +6,10 @@ import { compress } from '../compression/compress';
 import type { Quantizer } from '../compression/quantize';
 import { cropImage, findContentBounds, padImage, pixelRect } from '../crop/smart-crop';
 import { decodeImage, type FallbackDecoder } from '../decode/decode';
-import { getEnhanceModelSpec } from '../enhance/models';
-import type { EnhanceRunner } from '../enhance/runner';
-import { detailFactor, shrink } from '../enhance/softness';
-import { aiUpscale } from '../enhance/upscale';
 import { detectColorProfile, stripJpegMetadata, stripPngMetadata } from '../decode/metadata';
 import { MIME_TYPES } from '../decode/sniff';
 import { computeTargetSize, resizeImage } from '../resize/resize';
 import {
-  CancelledError,
   throwIfCancelled,
   type CancellationToken,
   type EncodableFormat,
@@ -32,8 +27,6 @@ import { validateOutput, ValidationError } from '../validation/validate';
 export interface PipelineContext {
   /** Required when background removal is enabled. */
   segmentation?: SegmentationRunner;
-  /** Required when AI upscaling is enabled. */
-  enhancer?: EnhanceRunner;
   fallbackDecoder?: FallbackDecoder;
   quantizer?: Quantizer;
   /** Process only this region of the source (e.g. the visible part of a cropped Figma fill). */
@@ -87,50 +80,6 @@ export async function processImage(
   if (sourceCropped) image = cropImage(image, sourceRegion!);
   if (ctx.onDecoded) await ctx.onDecoded(image);
   leave('loading');
-
-  // 1b. AI upscale (before background removal, so the matte is refined on
-  // the sharper image and every later stage works at the higher resolution).
-  let enhanced = false;
-  let enhanceScale = 1;
-  if (options.enhance.enabled) {
-    const decision = enhanceDecision(image, options);
-    if (decision.run) {
-      enter('enhancing', 'AI upscale');
-      if (!ctx.enhancer) throw new Error('AI upscaling is not available in this environment');
-      const spec = getEnhanceModelSpec(options.enhance.model);
-      try {
-        const before = { width: image.width, height: image.height };
-        // Soft images (upscaled before, or blurred) are first reduced to their
-        // real detail level: the model then restores edges instead of keeping
-        // the blur. When upscaling, never shrink so far that ×scale falls short
-        // of the Resize box.
-        let factor = 1;
-        if (options.enhance.detectSoftness !== false) {
-          const maxFactor = options.enhance.keepSize ? spec.scale : Math.floor(spec.scale / Math.min(spec.scale, decision.fit ?? spec.scale));
-          factor = await detailFactor(image, maxFactor);
-          if (factor > 1) {
-            warnings.push(
-              `The image holds about ${Math.round(image.width / factor)}×${Math.round(image.height / factor)} px of detail; AI upscaling started from that size.`,
-            );
-          }
-        }
-        image = await aiUpscale(await shrink(image, factor), spec, ctx.enhancer, { cancel: ctx.cancel, onProgress: ctx.onProgress });
-        enhanced = true;
-        if (options.enhance.keepSize) {
-          // Supersampled back to the original size: sharper, cleaner, same dimensions.
-          image = await resizeImage(image, before);
-        } else {
-          enhanceScale = spec.scale / factor;
-        }
-      } catch (error) {
-        if (error instanceof CancelledError) throw error;
-        warnings.push(`AI upscale failed and was skipped: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      leave('enhancing');
-    } else if (decision.reason) {
-      warnings.push(decision.reason);
-    }
-  }
 
   // 2. Analyse
   enter('analyzing');
@@ -210,7 +159,7 @@ export async function processImage(
     leave('resizing');
   }
 
-  const pixelsChanged = sourceCropped || enhanced || backgroundRemoved || cropped || resized || applyPadding;
+  const pixelsChanged = sourceCropped || backgroundRemoved || cropped || resized || applyPadding;
   if (pixelsChanged) analysis = analyzeImage(image, decoded.format);
 
   // 6. Compress
@@ -287,48 +236,13 @@ export async function processImage(
     encoderSettings: settings,
     analysis,
     candidates: compressed.candidates,
-    enhanced,
     backgroundRemoved,
     cropped,
     resized,
-    // In source pixels: undo the AI upscale factor.
-    placement: {
-      sourceWidth: sourceWidth / enhanceScale,
-      sourceHeight: sourceHeight / enhanceScale,
-      x: region.x / enhanceScale,
-      y: region.y / enhanceScale,
-      width: region.width / enhanceScale,
-      height: region.height / enhanceScale,
-    },
+    placement: { sourceWidth, sourceHeight, ...region },
     timings,
     warnings,
   };
-}
-
-/**
- * Whether to AI-upscale. With "only when smaller", that is when the image is
- * smaller than the Resize box on both sides (a plain resize would leave it
- * smaller or upscale it with a filter); without Resize limits it always runs.
- */
-export function enhanceDecision(image: RgbaImage, options: ProcessingOptions): { run: boolean; reason?: string; fit?: number } {
-  // The model's input limit: beyond it the CPU takes minutes and the ×4 image needs hundreds of MB.
-  const spec = getEnhanceModelSpec(options.enhance.model);
-  if (image.width * image.height > spec.maxInputPixels) {
-    const side = Math.round(Math.sqrt(spec.maxInputPixels));
-    return {
-      run: false,
-      reason: `AI upscale skipped: ${image.width}×${image.height} is larger than ${spec.label} handles (about ${side}×${side}).`,
-    };
-  }
-  const { resize } = options;
-  // How much the Resize box would enlarge the image (Infinity without limits).
-  const fit =
-    !resize.enabled || (!resize.maxWidth && !resize.maxHeight)
-      ? Infinity
-      : Math.min(resize.maxWidth ? resize.maxWidth / image.width : Infinity, resize.maxHeight ? resize.maxHeight / image.height : Infinity);
-  if (options.enhance.keepSize || !options.enhance.onlyWhenSmaller || fit === Infinity) return { run: true, fit };
-  // Less than 10% smaller: a filter resize is indistinguishable.
-  return fit > 1.1 ? { run: true, fit } : { run: false, fit };
 }
 
 async function passThrough(bytes: Uint8Array, format: EncodableFormat): Promise<Uint8Array> {

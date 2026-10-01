@@ -19,7 +19,6 @@ export const SETTINGS_STORAGE_KEY = 'assetforge.settings.v2';
 export const PLUGIN_DATA_KEY = 'assetforge';
 
 export const DEFAULT_OPTIONS: ProcessingOptions = {
-  enhance: { enabled: false, model: 'realesr-general-x4v3', onlyWhenSmaller: true, keepSize: false, detectSoftness: true },
   backgroundRemoval: {
     enabled: true,
     model: 'rmbg-1.4',

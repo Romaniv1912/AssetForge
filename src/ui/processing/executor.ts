@@ -3,7 +3,6 @@ import { decodeAvif, decodePng, decodeWebp, encodeJpeg, encodeWebp, optimisePngR
 import { browserFallbackDecoder } from '../../image/decode/decode';
 import { sniffFormat } from '../../image/decode/sniff';
 import { processImage } from '../../image/pipeline/process-image';
-import type { EnhanceRunner } from '../../image/enhance/runner';
 import type { CancellationToken, NormalizedRect, ProcessingOptions, RgbaImage, StageProgress } from '../../image/types';
 import type { ProcessingResultPayload } from '../../shared/messages/worker';
 
@@ -15,8 +14,7 @@ export async function executeJob(
   bytes: Uint8Array,
   options: ProcessingOptions,
   previewSize: number,
-  /** The ML client: background segmentation and AI upscaling. */
-  segmentation: (SegmentationRunner & EnhanceRunner) | undefined,
+  segmentation: SegmentationRunner | undefined,
   cancel: CancellationToken,
   onProgress: (progress: StageProgress) => void,
   sourceCrop: NormalizedRect | null = null,
@@ -24,7 +22,6 @@ export async function executeJob(
   let sourcePreview: Uint8Array | null = null;
   const result = await processImage(bytes, options, {
     segmentation,
-    enhancer: segmentation,
     sourceCrop,
     fallbackDecoder: browserFallbackDecoder,
     cancel,

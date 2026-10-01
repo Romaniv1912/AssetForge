@@ -70,16 +70,11 @@ async function main() {
   // Offline stand-ins for the CDN downloads done by the ML worker: the real
   // ONNX Runtime binaries from node_modules and a tiny ONNX model with the
   // segmentation I/O contract (fixtures/models/tiny-segmentation.onnx).
-  const hits = { runtime: 0, model: 0, enhance: 0 };
+  const hits = { runtime: 0, model: 0 };
   await page.context().route('https://cdn.jsdelivr.net/npm/onnxruntime-web@*/dist/*', async (route) => {
     hits.runtime++;
     const file = new URL(route.request().url()).pathname.split('/').pop()!;
     await route.fulfill({ body: readFileSync(require.resolve(`onnxruntime-web/${file}`)), contentType: 'application/wasm' });
-  });
-  // The AI-upscale model is published with the hosted UI on GitHub Pages.
-  await page.context().route('https://romaniv1912.github.io/**/models/*.onnx', async (route) => {
-    hits.enhance++;
-    await route.fulfill({ body: readFileSync(`${root}models/realesr-general-x4v3.onnx`), contentType: 'application/octet-stream' });
   });
   await page.context().route('https://huggingface.co/**', async (route) => {
     hits.model++;
@@ -210,30 +205,6 @@ async function main() {
   await page.screenshot({ path: `${shots}07-dark-results.png` });
   await frame.getByRole('tab', { name: 'Settings' }).click();
   await page.screenshot({ path: `${shots}08-dark-settings.png` });
-
-  // Third batch: AI upscale (real Real-ESRGAN model through the ML worker).
-  // With a 512 px box, the two small images (cropped cat 225×300 and the cat
-  // photo 451×300) are upscaled; the others are already large enough.
-  await frame.getByText('Remove background', { exact: true }).click();
-  await frame.getByText('AI upscale (Real-ESRGAN)', { exact: true }).click();
-  await frame.getByLabel('Max width').fill('512');
-  await frame.getByLabel('Max height').fill('512');
-  await page.screenshot({ path: `${shots}09-enhance-settings.png` });
-  const enhanceStarted = Date.now();
-  await frame.getByRole('button', { name: /Process 5 images/ }).click();
-  await frame.getByRole('button', { name: /Replace in Figma/ }).waitFor({ timeout: 600_000 });
-  console.log(`AI upscale batch finished in ${((Date.now() - enhanceStarted) / 1000).toFixed(1)} s`);
-  const statusesEnhance = await frame.locator('.status').allTextContents();
-  console.log('Statuses (AI upscale):', statusesEnhance.join(', '), '| downloads:', JSON.stringify(hits));
-  assert(statusesEnhance.filter((s) => s === 'Completed').length === 4, 'four images completed with AI upscale');
-  assert(hits.enhance === 1, 'upscale model downloaded once');
-  await frame.locator('.result__thumb').first().click();
-  await frame.getByRole('button', { name: 'Details' }).click();
-  await frame.getByText('AI upscaled: yes').waitFor();
-  const dims = await frame.locator('.compare__stats').nth(1).textContent();
-  assert(dims?.includes('384×512'), `cropped cat upscaled into the 512 box: ${dims}`);
-  await page.screenshot({ path: `${shots}10-enhanced.png` });
-  await frame.getByRole('button', { name: /Close/ }).or(frame.locator('button[title^="Close"]')).first().click();
 
   const relevantErrors = errors.filter((e) => !/favicon|fonts\.g(oogleapis|static)\.com|WebGPU Context Provider/.test(e));
   if (errors.length) console.log('Console:', errors.join('\n'));

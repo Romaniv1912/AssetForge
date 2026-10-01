@@ -2,7 +2,6 @@ import { CODEC_WASM_BASE64 } from 'virtual:assetforge-codec-wasm';
 import { base64ToBytes, base64WasmProvider } from '../../image/codecs/providers/base64';
 import { setWasmBinaryProvider, type WasmBinaryName } from '../../image/codecs/wasm-provider';
 import type { SegmentationRunner } from '../../image/background-removal/runner';
-import type { EnhanceRunner } from '../../image/enhance/runner';
 import { CancelledError, type NormalizedRect, type ProcessingOptions, type StageProgress } from '../../image/types';
 import type { ProcessingRequest, ProcessingResponse, ProcessingResultPayload } from '../../shared/messages/worker';
 import MlWorker from '../workers/ml.worker?worker&inline';
@@ -268,13 +267,13 @@ class InlineBackend implements ProcessingBackend {
   readonly concurrency = 1;
   private readonly tokens = new Map<string, { cancelled: boolean }>();
   private chain: Promise<unknown> = Promise.resolve();
-  private segmentation: Promise<SegmentationRunner & EnhanceRunner> | undefined;
+  private segmentation: Promise<SegmentationRunner> | undefined;
 
   constructor() {
     setWasmBinaryProvider(base64WasmProvider(CODEC_WASM_BASE64));
   }
 
-  private runner(): Promise<SegmentationRunner & EnhanceRunner> {
+  private runner(): Promise<SegmentationRunner> {
     this.segmentation ??= import('../workers/ml-runtime').then((m) => m.createBrowserSegmentationRunner());
     return this.segmentation;
   }
@@ -284,7 +283,7 @@ class InlineBackend implements ProcessingBackend {
     this.tokens.set(jobId, token);
     const run = this.chain.then(async () => {
       const { executeJob } = await import('./executor');
-      const segmentation = options.backgroundRemoval.enabled || options.enhance.enabled ? await this.runner() : undefined;
+      const segmentation = options.backgroundRemoval.enabled ? await this.runner() : undefined;
       try {
         return await executeJob(bytes, options, PREVIEW_SIZE, segmentation, token, onProgress, crop);
       } finally {

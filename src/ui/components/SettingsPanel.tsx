@@ -1,5 +1,4 @@
 import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
-import { ENHANCE_MODELS, getEnhanceModelSpec } from '../../image/enhance/models';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
 import { hostedUiStatus } from '../lib/hosted';
@@ -23,8 +22,6 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string; hint: string }[] = [
 const PRESETS: CompressionPreset[] = ['maximum', 'high', 'balanced', 'small', 'custom'];
 
 export function SettingsPanel({ options, update, disabled }: { options: ProcessingOptions; update: Update; disabled: boolean }) {
-  const enhance = options.enhance;
-  const enhanceModel = getEnhanceModelSpec(enhance.model);
   const bg = options.backgroundRemoval;
   const crop = options.crop;
   const resize = options.resize;
@@ -38,60 +35,6 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
 
   return (
     <fieldset className="settings" disabled={disabled}>
-      <Section title="Enhance">
-        <Checkbox
-          label="AI upscale (Real-ESRGAN)"
-          hint="Restore detail in small or blurry images, or sharpen and clean them at the same size"
-          checked={enhance.enabled}
-          onChange={(enabled) => set('enhance', { enabled })}
-        />
-        {enhance.enabled && (
-          <div className="indent">
-            {ENHANCE_MODELS.length > 1 && (
-              <SelectField
-                label="Model"
-                value={enhanceModel.id}
-                options={ENHANCE_MODELS.map((m) => ({ value: m.id, label: m.label, hint: m.description }))}
-                onChange={(model) => set('enhance', { model })}
-              />
-            )}
-            <SelectField
-              label="Mode"
-              value={enhance.keepSize ? 'keep-size' : enhance.onlyWhenSmaller ? 'upscale-small' : 'upscale-all'}
-              options={[
-                {
-                  value: 'upscale-small',
-                  label: 'Upscale small images',
-                  hint: 'Only images smaller than the Resize limits: ×4, then fitted to the limits',
-                },
-                { value: 'upscale-all', label: 'Upscale all images', hint: 'Every image: ×4, then fitted to the Resize limits' },
-                {
-                  value: 'keep-size',
-                  label: 'Enhance, keep size',
-                  hint: 'Same dimensions: removes JPEG artifacts and noise (does not make a blurry photo much sharper)',
-                },
-              ]}
-              onChange={(mode) =>
-                set('enhance', { keepSize: mode === 'keep-size', onlyWhenSmaller: mode === 'upscale-small' })
-              }
-            />
-            <Checkbox
-              label="Recover detail in soft images"
-              hint="Images that were upscaled before (or are blurry) are first reduced to their real detail level, so the model sharpens instead of keeping the blur. Also faster."
-              checked={enhance.detectSoftness !== false}
-              onChange={(detectSoftness) => set('enhance', { detectSoftness })}
-            />
-            <p className="hint">
-              {enhanceModel.label}: runs locally. {enhanceModel.performanceNote}{' '}
-              {cacheStatus.hosted ? '' : `The model is downloaded once per plugin launch: ${cacheStatus.reason}. `}
-              Images larger than about {Math.round(Math.sqrt(enhanceModel.maxInputPixels))}×
-              {Math.round(Math.sqrt(enhanceModel.maxInputPixels))} px are skipped. AI upscaling invents plausible detail; check
-              text and logos. Licence:{' '}
-              {enhanceModel.license}.
-            </p>
-          </div>
-        )}
-      </Section>
       <Section title="Background">
         <Checkbox label="Remove background" checked={bg.enabled} onChange={(enabled) => set('backgroundRemoval', { enabled })} />
         {bg.enabled && (

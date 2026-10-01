@@ -55,7 +55,6 @@ async function main() {
     const original = await decodeImage(source);
     const format = original.format as EncodableFormat;
     const options: ProcessingOptions = {
-      enhance: { enabled: false, model: 'realesr-general-x4v3', onlyWhenSmaller: true },
       backgroundRemoval: { enabled: false, model: 'rmbg-1.4', skipIfTransparent: true, refineEdges: true, decontaminateColors: true },
       crop: { enabled: false, padding: 0, alphaThreshold: 0 },
       resize: { enabled: false, maxWidth: 0, maxHeight: 0, preserveAspectRatio: true, allowUpscale: false },

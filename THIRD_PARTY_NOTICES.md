@@ -15,7 +15,6 @@ bundles libimagequant. Other bundled or downloaded components:
 | [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) | background-removal inference (downloaded on first use) | MIT |
 | [BRIA RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) | background-removal model (downloaded on first use) | bria-rmbg-1.4, **non-commercial use only** |
 | [BiRefNet lite](https://github.com/ZhengPeng7/BiRefNet) | background-removal model, WebGPU (downloaded on first use) | MIT |
-| [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) realesr-general-x4v3, RealESRGAN_x4plus_anime_6B | AI upscaling (converted to ONNX in `models/`, served from GitHub Pages) | BSD-3-Clause, see `models/realesr-general-x4v3.LICENSE` |
 | [fflate](https://github.com/101arrowz/fflate) | ZIP export, zlib | MIT |
 | [React](https://react.dev) | UI | MIT |
 | [Inter](https://rsms.me/inter/) (Google Fonts) | UI font | SIL OFL 1.1 |

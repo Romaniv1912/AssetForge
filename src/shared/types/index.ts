@@ -9,6 +9,7 @@ export type {
   ProcessingStage,
   ProcessingOptions,
   BackgroundRemovalOptions,
+  EnhanceOptions,
   CropOptions,
   ResizeOptions,
   CompressionOptions,

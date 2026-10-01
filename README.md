@@ -231,6 +231,32 @@ result.warnings;         // e.g. "JPEG does not support transparency: flattened 
 `processBatch(inputs, options, ctx, { concurrency })` adds lazy loading,
 bounded concurrency, per-item failure isolation and cancellation.
 
+## AI upscale (Enhance)
+
+Optional super-resolution with **Real-ESRGAN general x4v3** (compact SRVGGNet,
+1.2 M parameters, BSD-3-Clause). It is the strongest Real-ESRGAN model that
+is practical on the CPU. It restores edges and removes blur, noise and JPEG
+artifacts while upscaling ×4.
+
+- **Where it runs:** after the Figma crop is applied, before background removal.
+  The Resize limits then bring the ×4 result to the target size. For example, a
+  225×300 crop with a 512 box comes out at 384×512.
+- **When it runs:** by default only on images smaller than the Resize box
+  (more than 10% smaller). Turn off "Only images smaller than the Resize
+  limits" to also sharpen larger images. Inputs over 1 MP are skipped with a
+  warning, and a failure never fails the image: it is skipped with a warning.
+- **How it runs:** in tiles of 192 px with 16 px of context, so memory stays
+  bounded. Seams are invisible (mean difference to an untiled run ≈ 0.08/255).
+  Alpha is resized separately.
+- **Speed (CPU, one thread):** ≈ 2 s for a 128×128 input, 9 s for 256×256,
+  37 s for 512×512. WebGPU is faster.
+- **Model file:** the ONNX file (4.9 MB) is converted from the official PyTorch
+  weights by `models/convert-realesrgan.py`. The script needs no PyTorch and
+  checks the graph against a NumPy reference. The file is served from GitHub
+  Pages next to the hosted UI.
+- **Quality:** it invents plausible detail. Faces, edges and text get sharper,
+  while fine texture such as fur can get smoother.
+
 ## Background removal
 
 Background removal is **real, local ML inference** with ONNX Runtime Web in a

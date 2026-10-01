@@ -1,4 +1,5 @@
 import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
+import { getEnhanceModelSpec } from '../../image/enhance/models';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
 import { hostedUiStatus } from '../lib/hosted';
@@ -22,6 +23,8 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string; hint: string }[] = [
 const PRESETS: CompressionPreset[] = ['maximum', 'high', 'balanced', 'small', 'custom'];
 
 export function SettingsPanel({ options, update, disabled }: { options: ProcessingOptions; update: Update; disabled: boolean }) {
+  const enhance = options.enhance;
+  const enhanceModel = getEnhanceModelSpec(enhance.model);
   const bg = options.backgroundRemoval;
   const crop = options.crop;
   const resize = options.resize;
@@ -35,6 +38,30 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
 
   return (
     <fieldset className="settings" disabled={disabled}>
+      <Section title="Enhance">
+        <Checkbox
+          label="AI upscale (Real-ESRGAN)"
+          hint="Restore detail in small or blurry images: upscales ×4, then the Resize limits bring it to the target size"
+          checked={enhance.enabled}
+          onChange={(enabled) => set('enhance', { enabled })}
+        />
+        {enhance.enabled && (
+          <div className="indent">
+            <Checkbox
+              label="Only images smaller than the Resize limits"
+              hint="Off: also run on larger images (sharpens and removes JPEG artifacts, slower)"
+              checked={enhance.onlyWhenSmaller}
+              onChange={(onlyWhenSmaller) => set('enhance', { onlyWhenSmaller })}
+            />
+            <p className="hint">
+              {enhanceModel.label}: runs locally. {enhanceModel.performanceNote}{' '}
+              {cacheStatus.hosted ? '' : `The model is downloaded once per plugin launch: ${cacheStatus.reason}. `}
+              Images over 1 MP are not upscaled. AI upscaling invents plausible detail; check text and logos. Licence:{' '}
+              {enhanceModel.license}.
+            </p>
+          </div>
+        )}
+      </Section>
       <Section title="Background">
         <Checkbox label="Remove background" checked={bg.enabled} onChange={(enabled) => set('backgroundRemoval', { enabled })} />
         {bg.enabled && (

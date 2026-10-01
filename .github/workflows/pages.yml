@@ -37,6 +37,8 @@ jobs:
           mkdir -p site
           cp dist/index.html dist/version.json site/
           cp assets/icon-128.png site/favicon.png
+          mkdir -p site/models
+          cp models/*.onnx models/*.LICENSE site/models/
           touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:

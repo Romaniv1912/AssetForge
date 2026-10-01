@@ -6,10 +6,14 @@ import { compress } from '../compression/compress';
 import type { Quantizer } from '../compression/quantize';
 import { cropImage, findContentBounds, padImage, pixelRect } from '../crop/smart-crop';
 import { decodeImage, type FallbackDecoder } from '../decode/decode';
+import { getEnhanceModelSpec } from '../enhance/models';
+import type { EnhanceRunner } from '../enhance/runner';
+import { aiUpscale } from '../enhance/upscale';
 import { detectColorProfile, stripJpegMetadata, stripPngMetadata } from '../decode/metadata';
 import { MIME_TYPES } from '../decode/sniff';
 import { computeTargetSize, resizeImage } from '../resize/resize';
 import {
+  CancelledError,
   throwIfCancelled,
   type CancellationToken,
   type EncodableFormat,
@@ -27,6 +31,8 @@ import { validateOutput, ValidationError } from '../validation/validate';
 export interface PipelineContext {
   /** Required when background removal is enabled. */
   segmentation?: SegmentationRunner;
+  /** Required when AI upscaling is enabled. */
+  enhancer?: EnhanceRunner;
   fallbackDecoder?: FallbackDecoder;
   quantizer?: Quantizer;
   /** Process only this region of the source (e.g. the visible part of a cropped Figma fill). */
@@ -38,6 +44,12 @@ export interface PipelineContext {
   /** Receives the final pixels (e.g. to render a preview) before they are released. */
   onFinalPixels?: (image: RgbaImage) => void | Promise<void>;
 }
+
+/**
+ * Largest input AI upscaling accepts (output is 16× the pixels): beyond this
+ * the CPU backend takes minutes and the ×4 image needs hundreds of MB.
+ */
+export const MAX_ENHANCE_INPUT_PIXELS = 1024 * 1024;
 
 const PERFECT: QualityMetrics = { ssim: 1, worstBlockSsim: 1, psnr: Infinity, maxAlphaError: 0 };
 
@@ -80,6 +92,30 @@ export async function processImage(
   if (sourceCropped) image = cropImage(image, sourceRegion!);
   if (ctx.onDecoded) await ctx.onDecoded(image);
   leave('loading');
+
+  // 1b. AI upscale (before background removal, so the matte is refined on
+  // the sharper image and every later stage works at the higher resolution).
+  let enhanced = false;
+  let enhanceScale = 1;
+  if (options.enhance.enabled) {
+    const decision = enhanceDecision(image, options);
+    if (decision.run) {
+      enter('enhancing', 'AI upscale');
+      if (!ctx.enhancer) throw new Error('AI upscaling is not available in this environment');
+      const spec = getEnhanceModelSpec(options.enhance.model);
+      try {
+        image = await aiUpscale(image, spec, ctx.enhancer, { cancel: ctx.cancel, onProgress: ctx.onProgress });
+        enhanced = true;
+        enhanceScale = spec.scale;
+      } catch (error) {
+        if (error instanceof CancelledError) throw error;
+        warnings.push(`AI upscale failed and was skipped: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      leave('enhancing');
+    } else if (decision.reason) {
+      warnings.push(decision.reason);
+    }
+  }
 
   // 2. Analyse
   enter('analyzing');
@@ -159,7 +195,7 @@ export async function processImage(
     leave('resizing');
   }
 
-  const pixelsChanged = sourceCropped || backgroundRemoved || cropped || resized || applyPadding;
+  const pixelsChanged = sourceCropped || enhanced || backgroundRemoved || cropped || resized || applyPadding;
   if (pixelsChanged) analysis = analyzeImage(image, decoded.format);
 
   // 6. Compress
@@ -236,13 +272,43 @@ export async function processImage(
     encoderSettings: settings,
     analysis,
     candidates: compressed.candidates,
+    enhanced,
     backgroundRemoved,
     cropped,
     resized,
-    placement: { sourceWidth, sourceHeight, ...region },
+    // In source pixels: undo the AI upscale factor.
+    placement: {
+      sourceWidth: sourceWidth / enhanceScale,
+      sourceHeight: sourceHeight / enhanceScale,
+      x: region.x / enhanceScale,
+      y: region.y / enhanceScale,
+      width: region.width / enhanceScale,
+      height: region.height / enhanceScale,
+    },
     timings,
     warnings,
   };
+}
+
+/**
+ * Whether to AI-upscale. With "only when smaller", that is when the image is
+ * smaller than the Resize box on both sides (a plain resize would leave it
+ * smaller or upscale it with a filter); without Resize limits it always runs.
+ */
+export function enhanceDecision(image: RgbaImage, options: ProcessingOptions): { run: boolean; reason?: string } {
+  const pixels = image.width * image.height;
+  if (pixels > MAX_ENHANCE_INPUT_PIXELS) {
+    return {
+      run: false,
+      reason: `AI upscale skipped: ${image.width}×${image.height} is larger than the ${Math.round(MAX_ENHANCE_INPUT_PIXELS / 1e6 * 10) / 10} MP it handles.`,
+    };
+  }
+  if (!options.enhance.onlyWhenSmaller) return { run: true };
+  const { resize } = options;
+  if (!resize.enabled || (!resize.maxWidth && !resize.maxHeight)) return { run: true };
+  const fit = Math.min(resize.maxWidth ? resize.maxWidth / image.width : Infinity, resize.maxHeight ? resize.maxHeight / image.height : Infinity);
+  // Less than 10% smaller: a filter resize is indistinguishable.
+  return fit > 1.1 ? { run: true } : { run: false };
 }
 
 async function passThrough(bytes: Uint8Array, format: EncodableFormat): Promise<Uint8Array> {

@@ -41,8 +41,9 @@ export type ProcessingResponse =
   | { type: 'FIGMA_BYTES'; jobId: string; bytes: Uint8Array; format: 'png' | 'jpeg'; width: number; height: number }
   | { type: 'WASM_REQUEST'; name: WasmBinaryName };
 
+/** Requests to the ML worker: background segmentation or one AI-upscale tile. */
 export type SegmentationRequest = {
-  type: 'SEGMENT';
+  type: 'SEGMENT' | 'ENHANCE';
   requestId: string;
   modelId: string;
   tensor: Float32Array;
@@ -53,4 +54,5 @@ export type SegmentationRequest = {
 export type SegmentationResponse =
   | { type: 'SEGMENT_PROGRESS'; requestId: string; progress: StageProgress }
   | { type: 'SEGMENT_RESULT'; requestId: string; mask: Float32Array; width: number; height: number; backend: string }
+  | { type: 'ENHANCE_RESULT'; requestId: string; data: Float32Array; width: number; height: number }
   | { type: 'SEGMENT_ERROR'; requestId: string; error: string; unavailableModel?: string };

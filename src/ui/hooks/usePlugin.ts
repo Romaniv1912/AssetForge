@@ -17,14 +17,24 @@ export function usePlugin() {
     const unsubscribe = onPluginMessage((message) => {
       if (message.type === 'INIT') {
         if (message.options) {
-          const stored = message.options;
+          // The hosted UI can be newer than the installed main thread: fill in
+          // sections that older settings (or an older plugin) do not have.
+          const raw = message.options as Partial<ProcessingOptions>;
+          const stored: ProcessingOptions = {
+            enhance: { ...DEFAULT_OPTIONS.enhance, ...raw.enhance },
+            backgroundRemoval: { ...DEFAULT_OPTIONS.backgroundRemoval, ...raw.backgroundRemoval },
+            crop: { ...DEFAULT_OPTIONS.crop, ...raw.crop },
+            resize: { ...DEFAULT_OPTIONS.resize, ...raw.resize },
+            compression: {
+              ...DEFAULT_OPTIONS.compression,
+              ...raw.compression,
+              custom: { ...DEFAULT_OPTIONS.compression.custom, ...raw.compression?.custom },
+            },
+          };
           // Settings saved by older versions may reference a model that was removed.
           const modelExists = SEGMENTATION_MODELS.some((m) => m.id === stored.backgroundRemoval.model);
-          setOptions(
-            modelExists
-              ? stored
-              : { ...stored, backgroundRemoval: { ...stored.backgroundRemoval, model: DEFAULT_OPTIONS.backgroundRemoval.model } },
-          );
+          if (!modelExists) stored.backgroundRemoval.model = DEFAULT_OPTIONS.backgroundRemoval.model;
+          setOptions(stored);
         }
         loaded.current = true;
         setReady(true);

@@ -26,6 +26,7 @@ export function formatDimensions(width: number | null | undefined, height: numbe
 export const STAGE_LABELS: Record<ProcessingStage, string> = {
   loading: 'Loading',
   analyzing: 'Analyzing',
+  enhancing: 'Enhancing (AI upscale)',
   'removing-background': 'Removing background',
   cropping: 'Cropping',
   resizing: 'Resizing',
@@ -38,7 +39,8 @@ export const STAGE_LABELS: Record<ProcessingStage, string> = {
 export const STAGE_WEIGHTS: Record<ProcessingStage, [start: number, span: number]> = {
   loading: [0, 0.05],
   analyzing: [0.05, 0.03],
-  'removing-background': [0.08, 0.32],
+  enhancing: [0.08, 0.2],
+  'removing-background': [0.28, 0.12],
   cropping: [0.4, 0.02],
   resizing: [0.42, 0.04],
   compressing: [0.46, 0.46],

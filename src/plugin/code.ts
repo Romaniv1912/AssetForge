@@ -35,6 +35,7 @@ async function loadSettings(): Promise<ProcessingOptions | null> {
     if (!stored) return null;
     // Merge so settings saved by older versions gain new fields.
     return {
+      enhance: { ...DEFAULT_OPTIONS.enhance, ...stored.enhance },
       backgroundRemoval: { ...DEFAULT_OPTIONS.backgroundRemoval, ...stored.backgroundRemoval },
       crop: { ...DEFAULT_OPTIONS.crop, ...stored.crop },
       resize: { ...DEFAULT_OPTIONS.resize, ...stored.resize },

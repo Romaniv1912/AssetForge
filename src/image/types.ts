@@ -100,6 +100,12 @@ export interface EnhanceOptions {
    * every image is enhanced and then resized back (sharpening/denoising).
    */
   onlyWhenSmaller: boolean;
+  /**
+   * Keep the original size: upscale with the model, then downscale back. The
+   * image gets sharper and cleaner (blur, noise, JPEG artifacts) without
+   * changing dimensions. Overrides `onlyWhenSmaller`.
+   */
+  keepSize?: boolean;
 }
 
 export interface ProcessingOptions {

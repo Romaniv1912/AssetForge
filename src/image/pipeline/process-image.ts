@@ -104,9 +104,15 @@ export async function processImage(
       if (!ctx.enhancer) throw new Error('AI upscaling is not available in this environment');
       const spec = getEnhanceModelSpec(options.enhance.model);
       try {
+        const before = { width: image.width, height: image.height };
         image = await aiUpscale(image, spec, ctx.enhancer, { cancel: ctx.cancel, onProgress: ctx.onProgress });
         enhanced = true;
-        enhanceScale = spec.scale;
+        if (options.enhance.keepSize) {
+          // Supersampled back to the original size: sharper, cleaner, same dimensions.
+          image = await resizeImage(image, before);
+        } else {
+          enhanceScale = spec.scale;
+        }
       } catch (error) {
         if (error instanceof CancelledError) throw error;
         warnings.push(`AI upscale failed and was skipped: ${error instanceof Error ? error.message : String(error)}`);
@@ -303,7 +309,7 @@ export function enhanceDecision(image: RgbaImage, options: ProcessingOptions): {
       reason: `AI upscale skipped: ${image.width}×${image.height} is larger than the ${Math.round(MAX_ENHANCE_INPUT_PIXELS / 1e6 * 10) / 10} MP it handles.`,
     };
   }
-  if (!options.enhance.onlyWhenSmaller) return { run: true };
+  if (options.enhance.keepSize || !options.enhance.onlyWhenSmaller) return { run: true };
   const { resize } = options;
   if (!resize.enabled || (!resize.maxWidth && !resize.maxHeight)) return { run: true };
   const fit = Math.min(resize.maxWidth ? resize.maxWidth / image.width : Infinity, resize.maxHeight ? resize.maxHeight / image.height : Infinity);

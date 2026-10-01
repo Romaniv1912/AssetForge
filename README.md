@@ -241,10 +241,17 @@ artifacts while upscaling ×4.
 - **Where it runs:** after the Figma crop is applied, before background removal.
   The Resize limits then bring the ×4 result to the target size. For example, a
   225×300 crop with a 512 box comes out at 384×512.
-- **When it runs:** by default only on images smaller than the Resize box
-  (more than 10% smaller). Turn off "Only images smaller than the Resize
-  limits" to also sharpen larger images. Inputs over 1 MP are skipped with a
-  warning, and a failure never fails the image: it is skipped with a warning.
+- **Modes:**
+  - *Upscale small images* (default): only images more than 10% smaller than
+    the Resize box.
+  - *Upscale all images*: every image is upscaled, then fitted to the box.
+  - *Enhance, keep size*: upscale ×4, then downscale back to the original
+    dimensions. This is a cleanup, not a sharpener: it removes JPEG blocking
+    and noise (on a quality-12 JPEG, blockiness 3.7 → 1.7, clean ≈ 1.1), but a
+    blurry photo gets only slightly crisper edges.
+
+  Inputs over 1 MP are skipped with a warning, and a failure never fails the
+  image: the enhance step is skipped with a warning.
 - **How it runs:** in tiles of 192 px with 16 px of context, so memory stays
   bounded. Seams are invisible (mean difference to an untiled run ≈ 0.08/255).
   Alpha is resized separately.

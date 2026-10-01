@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import './helpers/setup';
 import { OnnxSegmentationRunner } from '../src/image/background-removal/onnx-runner';
-import { encodePng, resample } from '../src/image/codecs';
+import { encodeJpeg, encodePng, resample } from '../src/image/codecs';
 import { cropImage } from '../src/image/crop/smart-crop';
 import { decodeImage } from '../src/image/decode/decode';
 import { getEnhanceModelSpec } from '../src/image/enhance/models';
@@ -36,6 +36,35 @@ const runner = new OnnxSegmentationRunner({
 async function cat(size: number): Promise<RgbaImage> {
   const { image } = await decodeImage(fixture('chelsea.png'));
   return cropImage(image, { x: 150, y: 60, width: size, height: size });
+}
+
+/**
+ * JPEG blocking: how much larger luma steps are across 8×8 block borders than
+ * inside blocks (≈1 for a clean image).
+ */
+function blockiness(image: RgbaImage): number {
+  const { width, height, data } = image;
+  const luma = (x: number, y: number) => {
+    const i = (y * width + x) * 4;
+    return 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!;
+  };
+  let border = 0;
+  let inner = 0;
+  let nb = 0;
+  let ni = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width - 1; x++) {
+      const d = Math.abs(luma(x + 1, y) - luma(x, y));
+      if ((x + 1) % 8 === 0) {
+        border += d;
+        nb++;
+      } else {
+        inner += d;
+        ni++;
+      }
+    }
+  }
+  return border / nb / (inner / ni);
 }
 
 /** Mean luma gradient magnitude: higher is sharper. */
@@ -107,6 +136,24 @@ describe('AI upscale (Real-ESRGAN general x4v3, real model)', () => {
     expect(result.placement).toMatchObject({ sourceWidth: 100, sourceHeight: 100, width: 100, height: 100 });
     expect(modelLoads).toBe(1); // one session for every tile and test
   });
+
+  it('keep-size mode: same dimensions, JPEG blocking removed', async () => {
+    const { image: astronaut } = await decodeImage(fixture('astronaut.png'));
+    const clean = cropImage(astronaut, { x: 130, y: 32, width: 96, height: 96 });
+    const jpeg = await encodeJpeg(clean, { quality: 12 }); // heavily compressed
+    const input = (await decodeImage(jpeg)).image;
+    const result = await processImage(
+      jpeg,
+      options({ enhance: { enabled: true, keepSize: true }, compression: { format: 'png', preset: 'maximum' } }),
+      { enhancer: runner },
+    );
+    expect(result.enhanced).toBe(true);
+    expect([result.width, result.height]).toEqual([96, 96]);
+    expect(result.placement).toMatchObject({ sourceWidth: 96, sourceHeight: 96, width: 96, height: 96 });
+    const out = (await decodeImage(result.data)).image;
+    console.log(`keep-size blockiness: JPEG ${blockiness(input).toFixed(2)}, enhanced ${blockiness(out).toFixed(2)}, clean ${blockiness(clean).toFixed(2)}`);
+    expect(blockiness(out)).toBeLessThan(blockiness(input) * 0.6);
+  });
 });
 
 describe('when AI upscaling runs', () => {
@@ -119,6 +166,9 @@ describe('when AI upscaling runs', () => {
     expect(enhanceDecision(blank(2000, 2000), opts(true)).run).toBe(false);
     expect(enhanceDecision(blank(600, 400), opts(false)).run).toBe(true);
     expect(enhanceDecision(blank(600, 400), opts(true, false)).run).toBe(true);
+    // Keep-size mode runs regardless of the Resize box.
+    const keep = options({ enhance: { enabled: true, keepSize: true }, resize: { enabled: true, maxWidth: 512, maxHeight: 512 } });
+    expect(enhanceDecision(blank(2000, 400), keep).run).toBe(true);
   });
 
   it('never on inputs over 1 MP', () => {

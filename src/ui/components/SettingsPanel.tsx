@@ -41,22 +41,36 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
       <Section title="Enhance">
         <Checkbox
           label="AI upscale (Real-ESRGAN)"
-          hint="Restore detail in small or blurry images: upscales ×4, then the Resize limits bring it to the target size"
+          hint="Restore detail in small or blurry images, or sharpen and clean them at the same size"
           checked={enhance.enabled}
           onChange={(enabled) => set('enhance', { enabled })}
         />
         {enhance.enabled && (
           <div className="indent">
-            <Checkbox
-              label="Only images smaller than the Resize limits"
-              hint="Off: also run on larger images (sharpens and removes JPEG artifacts, slower)"
-              checked={enhance.onlyWhenSmaller}
-              onChange={(onlyWhenSmaller) => set('enhance', { onlyWhenSmaller })}
+            <SelectField
+              label="Mode"
+              value={enhance.keepSize ? 'keep-size' : enhance.onlyWhenSmaller ? 'upscale-small' : 'upscale-all'}
+              options={[
+                {
+                  value: 'upscale-small',
+                  label: 'Upscale small images',
+                  hint: 'Only images smaller than the Resize limits: ×4, then fitted to the limits',
+                },
+                { value: 'upscale-all', label: 'Upscale all images', hint: 'Every image: ×4, then fitted to the Resize limits' },
+                {
+                  value: 'keep-size',
+                  label: 'Enhance, keep size',
+                  hint: 'Same dimensions: removes JPEG artifacts and noise (does not make a blurry photo much sharper)',
+                },
+              ]}
+              onChange={(mode) =>
+                set('enhance', { keepSize: mode === 'keep-size', onlyWhenSmaller: mode === 'upscale-small' })
+              }
             />
             <p className="hint">
               {enhanceModel.label}: runs locally. {enhanceModel.performanceNote}{' '}
               {cacheStatus.hosted ? '' : `The model is downloaded once per plugin launch: ${cacheStatus.reason}. `}
-              Images over 1 MP are not upscaled. AI upscaling invents plausible detail; check text and logos. Licence:{' '}
+              Images over 1 MP are skipped. AI upscaling invents plausible detail; check text and logos. Licence:{' '}
               {enhanceModel.license}.
             </p>
           </div>

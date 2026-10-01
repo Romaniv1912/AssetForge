@@ -14,10 +14,10 @@ import { compareImages } from '../src/image/metrics/ssim';
 import { enhanceDecision, processImage } from '../src/image/pipeline/process-image';
 import type { RgbaImage } from '../src/image/types';
 import { fixture, options } from './helpers/setup';
-import { blank, transparentIllustration } from './helpers/synthetic';
+import { blank, flatGraphic, transparentIllustration } from './helpers/synthetic';
 
 const require = createRequire(import.meta.url);
-const modelPath = fileURLToPath(new URL('../models/realesr-general-x4v3.onnx', import.meta.url));
+const modelFile = (url: string) => fileURLToPath(new URL(`../models/${url.split('/').pop()}`, import.meta.url));
 const spec = getEnhanceModelSpec('realesr-general-x4v3');
 
 let modelLoads = 0;
@@ -28,9 +28,9 @@ const runner = new OnnxSegmentationRunner({
     ort.env.wasm.numThreads = 1;
     return { ort: ort as never, executionProviders: ['wasm'], label: 'WebAssembly (CPU)' };
   },
-  loadModel: async () => {
+  loadModel: async (url) => {
     modelLoads++;
-    return new Uint8Array(readFileSync(modelPath));
+    return new Uint8Array(readFileSync(modelFile(url)));
   },
 });
 
@@ -135,7 +135,7 @@ describe('AI upscale (Real-ESRGAN general x4v3, real model)', () => {
     expect([result.width, result.height]).toEqual([256, 256]);
     // Placement stays in source pixels for the before/after overlay.
     expect(result.placement).toMatchObject({ sourceWidth: 100, sourceHeight: 100, width: 100, height: 100 });
-    expect(modelLoads).toBe(1); // one session for every tile and test
+    expect(modelLoads).toBe(1); // one session for every tile and test (photo model)
   });
 
   it('keep-size mode: same dimensions, JPEG blocking removed', async () => {
@@ -154,6 +154,19 @@ describe('AI upscale (Real-ESRGAN general x4v3, real model)', () => {
     const out = (await decodeImage(result.data)).image;
     console.log(`keep-size blockiness: JPEG ${blockiness(input).toFixed(2)}, enhanced ${blockiness(out).toFixed(2)}, clean ${blockiness(clean).toFixed(2)}`);
     expect(blockiness(out)).toBeLessThan(blockiness(input) * 0.6);
+  });
+});
+
+describe('graphics model (Real-ESRGAN x4plus anime 6B, real model)', () => {
+  it('restores flat graphics closer to the sharp original than a filter', async () => {
+    const original = flatGraphic(128, 96);
+    const small = await resample(original, 32, 24, { filter: 'lanczos3', premultiply: true, linearRGB: true });
+    const ai = await aiUpscale(small, getEnhanceModelSpec('realesrgan-x4plus-anime-6b'), runner);
+    const filter = await resample(small, 128, 96, { filter: 'catrom', premultiply: true, linearRGB: true });
+    expect([ai.width, ai.height]).toEqual([128, 96]);
+    const [mAi, mFilter] = [compareImages(original, ai), compareImages(original, filter)];
+    console.log(`anime 6B vs truth: AI ssim ${mAi.ssim.toFixed(4)} psnr ${mAi.psnr.toFixed(2)}, filter ssim ${mFilter.ssim.toFixed(4)} psnr ${mFilter.psnr.toFixed(2)}`);
+    expect(mAi.ssim).toBeGreaterThan(mFilter.ssim);
   });
 });
 
@@ -222,6 +235,10 @@ describe('when AI upscaling runs', () => {
     const decision = enhanceDecision(blank(1200, 1000), opts(false));
     expect(decision.run).toBe(false);
     expect(decision.reason).toMatch(/AI upscale skipped/);
+    // The slower graphics model has a lower limit.
+    const anime = options({ enhance: { enabled: true, onlyWhenSmaller: false, model: 'realesrgan-x4plus-anime-6b' } });
+    expect(enhanceDecision(blank(512, 512), anime).run).toBe(true);
+    expect(enhanceDecision(blank(600, 600), anime).run).toBe(false);
   });
 
   it('failures do not fail the image', async () => {

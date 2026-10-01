@@ -233,10 +233,23 @@ bounded concurrency, per-item failure isolation and cancellation.
 
 ## AI upscale (Enhance)
 
-Optional super-resolution with **Real-ESRGAN general x4v3** (compact SRVGGNet,
-1.2 M parameters, BSD-3-Clause). It is the strongest Real-ESRGAN model that
-is practical on the CPU. It restores edges and removes blur, noise and JPEG
-artifacts while upscaling ×4.
+Optional ×4 super-resolution with Real-ESRGAN (BSD-3-Clause). Two models:
+
+| Model | Size | Best for | CPU time, 256×256 input | Max input |
+| --- | --- | --- | --- | --- |
+| `realesr-general-x4v3` (default): compact SRVGGNet, 1.2 M parameters | 4.9 MB | photos, mixed content | ≈ 9 s | 1024×1024 |
+| `realesrgan-x4plus-anime-6b`: RRDBNet, 6 blocks | 17.9 MB | emoji, icons, stickers, illustrations, UI | ≈ 45 s (×2 with transparency) | 512×512 |
+
+How the models were chosen, measured on the CPU with one thread as in Figma:
+- **Photos:** a 64×64 face upscaled ×4 and compared with the original. The
+  photo model scores SSIM 0.839; the graphics model turns faces into cartoons
+  (0.773).
+- **Graphics:** on a flat graphic upscaled ×4, the graphics model scores SSIM
+  0.948 against 0.893 for Catmull-Rom. It gave the cleanest outlines on an
+  emoji sheet.
+- **Not included:** `RealESRGAN_x4plus` (23 blocks, 67 MB) took 286 s on the
+  emoji sheet and was not better on photos, so it is not shipped. The converter
+  supports it if you have WebGPU.
 
 - **Where it runs:** after the Figma crop is applied, before background removal.
   The Resize limits then bring the ×4 result to the target size. For example, a
@@ -250,7 +263,7 @@ artifacts while upscaling ×4.
     and noise (on a quality-12 JPEG, blockiness 3.7 → 1.7, clean ≈ 1.1), but a
     blurry photo gets only slightly crisper edges.
 
-  Inputs over 1 MP are skipped with a warning, and a failure never fails the
+  Inputs over the model's limit (table above) are skipped with a warning, and a failure never fails the
   image: the enhance step is skipped with a warning.
 - **Soft images:** some images hold less detail than their size suggests,
   because they were upscaled before or are blurry. Such images are detected
@@ -267,10 +280,11 @@ artifacts while upscaling ×4.
   Alpha is resized separately.
 - **Speed (CPU, one thread):** ≈ 2 s for a 128×128 input, 9 s for 256×256,
   37 s for 512×512. WebGPU is faster.
-- **Model file:** the ONNX file (4.9 MB) is converted from the official PyTorch
-  weights by `models/convert-realesrgan.py`. The script needs no PyTorch and
-  checks the graph against a NumPy reference. The file is served from GitHub
-  Pages next to the hosted UI.
+- **Model files:** the ONNX files are converted from the official PyTorch
+  weights by `models/convert-realesrgan.py`. The script needs no PyTorch,
+  supports SRVGGNet and RRDBNet, and checks each graph against a NumPy
+  reference (exact match). The files are served from GitHub Pages next to the
+  hosted UI.
 - **Quality:** it invents plausible detail. Faces, edges and text get sharper,
   while fine texture such as fur can get smoother.
 

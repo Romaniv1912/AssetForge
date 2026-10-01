@@ -46,12 +46,6 @@ export interface PipelineContext {
   onFinalPixels?: (image: RgbaImage) => void | Promise<void>;
 }
 
-/**
- * Largest input AI upscaling accepts (output is 16× the pixels): beyond this
- * the CPU backend takes minutes and the ×4 image needs hundreds of MB.
- */
-export const MAX_ENHANCE_INPUT_PIXELS = 1024 * 1024;
-
 const PERFECT: QualityMetrics = { ssim: 1, worstBlockSsim: 1, psnr: Infinity, maxAlphaError: 0 };
 
 /**
@@ -317,11 +311,13 @@ export async function processImage(
  * smaller or upscale it with a filter); without Resize limits it always runs.
  */
 export function enhanceDecision(image: RgbaImage, options: ProcessingOptions): { run: boolean; reason?: string; fit?: number } {
-  const pixels = image.width * image.height;
-  if (pixels > MAX_ENHANCE_INPUT_PIXELS) {
+  // The model's input limit: beyond it the CPU takes minutes and the ×4 image needs hundreds of MB.
+  const spec = getEnhanceModelSpec(options.enhance.model);
+  if (image.width * image.height > spec.maxInputPixels) {
+    const side = Math.round(Math.sqrt(spec.maxInputPixels));
     return {
       run: false,
-      reason: `AI upscale skipped: ${image.width}×${image.height} is larger than the ${Math.round(MAX_ENHANCE_INPUT_PIXELS / 1e6 * 10) / 10} MP it handles.`,
+      reason: `AI upscale skipped: ${image.width}×${image.height} is larger than ${spec.label} handles (about ${side}×${side}).`,
     };
   }
   const { resize } = options;

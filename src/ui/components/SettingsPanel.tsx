@@ -1,5 +1,5 @@
 import { SEGMENTATION_MODELS } from '../../image/background-removal/models';
-import { getEnhanceModelSpec } from '../../image/enhance/models';
+import { ENHANCE_MODELS, getEnhanceModelSpec } from '../../image/enhance/models';
 import { PRESET_DESCRIPTIONS, PRESET_LABELS } from '../../image/compression/presets';
 import type { CompressionPreset, OutputFormat, ProcessingOptions } from '../../image/types';
 import { hostedUiStatus } from '../lib/hosted';
@@ -47,6 +47,14 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
         />
         {enhance.enabled && (
           <div className="indent">
+            {ENHANCE_MODELS.length > 1 && (
+              <SelectField
+                label="Model"
+                value={enhanceModel.id}
+                options={ENHANCE_MODELS.map((m) => ({ value: m.id, label: m.label, hint: m.description }))}
+                onChange={(model) => set('enhance', { model })}
+              />
+            )}
             <SelectField
               label="Mode"
               value={enhance.keepSize ? 'keep-size' : enhance.onlyWhenSmaller ? 'upscale-small' : 'upscale-all'}
@@ -76,7 +84,9 @@ export function SettingsPanel({ options, update, disabled }: { options: Processi
             <p className="hint">
               {enhanceModel.label}: runs locally. {enhanceModel.performanceNote}{' '}
               {cacheStatus.hosted ? '' : `The model is downloaded once per plugin launch: ${cacheStatus.reason}. `}
-              Images over 1 MP are skipped. AI upscaling invents plausible detail; check text and logos. Licence:{' '}
+              Images larger than about {Math.round(Math.sqrt(enhanceModel.maxInputPixels))}×
+              {Math.round(Math.sqrt(enhanceModel.maxInputPixels))} px are skipped. AI upscaling invents plausible detail; check
+              text and logos. Licence:{' '}
               {enhanceModel.license}.
             </p>
           </div>
